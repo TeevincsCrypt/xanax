@@ -1,5 +1,6 @@
 import { Hono, type Context } from "hono";
 import { currentUser, signIn, signOut } from "../auth.js";
+import { config } from "../config.js";
 import { merchants, orders, products, type Merchant, type User } from "../db.js";
 import { createListing, dashboardUrl, type ListingInput } from "../listing.js";
 import { deliverWebhook } from "../notify.js";
@@ -17,14 +18,23 @@ merchant.get("/", (c) => {
   return c.html(landingPage(list, { products: products.search(undefined, 1000).length, orders: n, volumeCents }));
 });
 
-merchant.get("/sell", (c) => {
+/** Selling needs an account so every store, order and receipt belongs to someone. (Open only when sign-in isn't configured, e.g. local dev.) */
+function sellerOrRedirect(c: Context): { user?: User; redirect?: Response } {
   const user = currentUser(c);
+  if (!user && config.authEnabled) return { redirect: c.redirect("/login?next=/sell", 303) };
+  return { user };
+}
+
+merchant.get("/sell", (c) => {
+  const { user, redirect } = sellerOrRedirect(c);
+  if (redirect) return redirect;
   return c.html(sellPage(user?.email ? { email: user.email } : {}));
 });
 
 merchant.post("/sell", async (c) => {
   if (!limitSell(clientIp(c))) return c.html(messagePage("Slow down", "Too many listings from your network. Try again in a few minutes."), 429);
-  const user = currentUser(c);
+  const { user, redirect } = sellerOrRedirect(c);
+  if (redirect) return redirect;
   const form = await c.req.parseBody({ all: true });
   const one = (k: string) => {
     const v = form[k];

@@ -32,7 +32,13 @@ const facilitator: FacilitatorClient = {
 };
 
 const app = createApp();
-const req = (path: string, init?: RequestInit) => app.fetch(new Request(`https://xanax.test${path}`, init));
+// Each test request comes from its own IP so per-IP rate limits (e.g. 10 listings / 10 min) don't trip.
+let ipCounter = 0;
+const req = (path: string, init?: RequestInit) => {
+  const r = new Request(`https://xanax.test${path}`, init);
+  if (!r.headers.has("x-forwarded-for")) r.headers.set("x-forwarded-for", `10.9.${(ipCounter >> 8) & 255}.${ipCounter++ & 255}`);
+  return app.fetch(r);
+};
 const buyer = privateKeyToAccount(keccak256(toHex("xanax-features-buyer")));
 const pay = wrapFetchWithPaymentFromConfig(((i: RequestInfo | URL, n?: RequestInit) => app.fetch(new Request(i, n))) as typeof fetch, {
   schemes: [{ network: NETWORK, client: new ExactEvmScheme(buyer) }],
@@ -247,5 +253,29 @@ describe("human product page", () => {
     expect((await req(`/p/${product.id}`, { headers: browser })).status).toBe(200);
     expect((await req(`/buy/${product.id}`)).status).toBe(402);
     expect((await req(`/buy/${product.id}`, { method: "POST", headers: browser })).status).toBe(402);
+  });
+});
+
+describe("selling requires an account", () => {
+  it("sends signed-out visitors to sign in, and lets signed-in sellers list", async () => {
+    const { config } = await import("../src/config.js");
+    const before = config.authEnabled;
+    (config as { authEnabled: boolean }).authEnabled = true;
+    try {
+      const get = await req("/sell");
+      expect(get.status).toBe(303);
+      expect(get.headers.get("location")).toBe("/login?next=/sell");
+      const post = await req("/sell", { method: "POST", body: sellForm({ delivery_text: "x" }) });
+      expect(post.status).toBe(303);
+      expect(products.search("Photo pack")).toHaveLength(0);
+
+      const cookie = await login("seller", "seller@example.com");
+      expect((await req("/sell", { headers: { cookie } })).status).toBe(200);
+      const ok = await req("/sell", { method: "POST", body: sellForm({ delivery_text: "x" }), headers: { cookie } });
+      expect(ok.status).toBe(201);
+      expect(merchants.get(products.search("Photo pack")[0]!.merchant_id)!.user_id).toBe("did:privy:seller");
+    } finally {
+      (config as { authEnabled: boolean }).authEnabled = before;
+    }
   });
 });

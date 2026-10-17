@@ -19,29 +19,45 @@ const account = privateKeyToAccount(key);
 let [productId, qtyArg] = process.argv.slice(2);
 const qty = Number(qtyArg ?? 1);
 
-const list = await (await fetch(`${target}/api/products`)).json();
-const product = productId ? list.products.find((p: any) => p.id === productId) : list.products.find((p: any) => p.in_stock);
-if (!product) throw new Error(`No product ${productId ?? "in stock"} at ${target}`);
-console.log(`Buyer ${account.address} on ${network}`);
-console.log(`Buying ${qty} x "${product.name}" from ${product.merchant} at $${product.price_usd} each`);
+async function findProduct(): Promise<any> {
+  if (!productId) {
+    const list = await (await fetch(`${target}/api/products`)).json();
+    return list.products.find((p: any) => p.in_stock);
+  }
+  const res = await fetch(`${target}/api/products/${productId}`);
+  if (res.ok) return res.json();
+  const all = await (await fetch(`${target}/api/products`)).json();
+  console.error(`Product ${productId} not found at ${target}. Products there now: ${all.products.map((p: any) => p.id).join(", ") || "(none)"}`);
+  console.error("If the list is empty after a redeploy, the database isn't on a persistent volume: mount one at /data, then re-run /admin/seed.");
+  return undefined;
+}
 
-const url = `${product.buy.url}${qty > 1 ? `?qty=${qty}` : ""}`;
-const probe = await fetch(url, { method: "POST" });
-console.log(`Probe: HTTP ${probe.status}, PAYMENT-REQUIRED header ${probe.headers.get("payment-required") ? "present" : "MISSING"}`);
+const product = await findProduct();
+if (!product) {
+  process.exitCode = 1;
+} else {
+  console.log(`Buyer ${account.address} on ${network}`);
+  console.log(`Buying ${qty} x "${product.name}" from ${product.merchant} at $${product.price_usd} each`);
 
-const body = {
-  buyer: {
-    name: "Test Buyer",
-    email: "buyer@example.com",
-    phone: "+234 801 234 5678",
-    shipping_address: "12 Admiralty Way, Lekki, Lagos, Nigeria",
-    note: "x402 smoke test",
-  },
-};
-const pay = wrapFetchWithPaymentFromConfig(fetch, { schemes: [{ network, client: new ExactEvmScheme(account) }] });
-const res = await pay(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-console.log(`Paid request: HTTP ${res.status}`);
-const pr = res.headers.get("payment-response");
-if (pr) console.log("PAYMENT-RESPONSE:", decodePaymentResponseHeader(pr));
-console.log(JSON.stringify(await res.json().catch(() => null), null, 2));
-process.exit(res.ok ? 0 : 1);
+  const url = `${product.buy.url}${qty > 1 ? `?qty=${qty}` : ""}`;
+  const probe = await fetch(url, { method: "POST" });
+  console.log(`Probe: HTTP ${probe.status}, PAYMENT-REQUIRED header ${probe.headers.get("payment-required") ? "present" : "MISSING"}`);
+
+  const body = {
+    buyer: {
+      name: "Test Buyer",
+      email: "buyer@example.com",
+      phone: "+234 801 234 5678",
+      shipping_address: "12 Admiralty Way, Lekki, Lagos, Nigeria",
+      note: "x402 smoke test",
+    },
+  };
+  const pay = wrapFetchWithPaymentFromConfig(fetch, { schemes: [{ network, client: new ExactEvmScheme(account) }] });
+  const res = await pay(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  console.log(`Paid request: HTTP ${res.status}`);
+  const pr = res.headers.get("payment-response");
+  if (pr) console.log("PAYMENT-RESPONSE:", decodePaymentResponseHeader(pr));
+  console.log(JSON.stringify(await res.json().catch(() => null), null, 2));
+  // Set exitCode instead of calling process.exit(): exiting with open sockets trips a libuv assert on Windows.
+  process.exitCode = res.ok ? 0 : 1;
+}

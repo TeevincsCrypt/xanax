@@ -47,8 +47,19 @@ function blankToUndefined(env: NodeJS.ProcessEnv): Record<string, string | undef
 
 const env = EnvSchema.parse(blankToUndefined(process.env));
 
+/**
+ * On Railway, keep SQLite on the attached volume wherever it's mounted. The Dockerfile default
+ * (/data) only persists if the volume is mounted exactly there.
+ */
+function resolveDatabaseUrl(): string {
+  const mount = process.env.RAILWAY_VOLUME_MOUNT_PATH?.trim();
+  if (mount && env.DATABASE_URL === "file:/data/xanax.db") return `file:${mount.replace(/\/+$/, "")}/xanax.db`;
+  return env.DATABASE_URL;
+}
+
 export const config = {
   ...env,
+  DATABASE_URL: resolveDatabaseUrl(),
   BASE_URL: env.BASE_URL.replace(/\/+$/, ""),
   network: NETWORKS[env.X402_NETWORK],
   /**

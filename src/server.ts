@@ -5,6 +5,10 @@ import { createApp } from "./app.js";
 import { ensureInitialized } from "./x402.js";
 
 db(); // open + migrate before accepting traffic
+console.log(`[db] ${config.DATABASE_URL}`);
+if (process.env.RAILWAY_ENVIRONMENT && !process.env.RAILWAY_VOLUME_MOUNT_PATH) {
+  console.warn("[db] WARNING: no Railway volume attached. Products and orders will be LOST on every redeploy. Attach a volume to this service.");
+}
 const app = createApp();
 
 serve({ fetch: app.fetch, port: config.PORT, hostname: "0.0.0.0" }, (info) => {

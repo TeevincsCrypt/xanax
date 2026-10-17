@@ -27,20 +27,22 @@ Your order ID is your license. Enjoy, and come by the roastery for a cup.`;
  * Create the demo merchant (Ada's Roastery, fictional) with a physical and a digital product.
  * Idempotent: does nothing if a merchant with that name already exists.
  */
+export const DEMO_MERCHANT = "Ada's Roastery, Lagos";
+
 export async function seedDemo(payoutAddress = process.env.SEED_PAYOUT_ADDRESS) {
   if (!payoutAddress || !isAddress(payoutAddress, { strict: false })) {
     throw new Error("Set SEED_PAYOUT_ADDRESS to the Base wallet that should receive demo payments");
   }
   const payout = getAddress(payoutAddress);
   const testnet = config.network.testnet;
-  const existing = products.search("Ada's Roastery", 10);
+  const existing = products.search(DEMO_MERCHANT, 50).filter((p) => p.business_name === DEMO_MERCHANT);
   if (existing.length > 0) {
     return { created: false as const, products: existing.map((p) => ({ id: p.id, name: p.name, buy_url: buyUrl(p.id) })) };
   }
 
   const coffee = await createListing(
     {
-      business_name: "Ada's Roastery, Lagos",
+      business_name: DEMO_MERCHANT,
       product_name: "Single-origin coffee, 250g",
       description:
         "Freshly roasted Nigerian Arabica from the Mambilla Plateau. Notes of cocoa, hibiscus and brown sugar. Whole bean, roasted to order in Lagos and shipped within 2 days.",
@@ -82,4 +84,9 @@ export async function seedDemo(payoutAddress = process.env.SEED_PAYOUT_ADDRESS) 
     webhook_secret: coffee.listing.webhookSecret,
     products: [coffee.listing.product, products.get(guideId)!].map((p) => ({ id: p.id, name: p.name, buy_url: buyUrl(p.id) })),
   };
+}
+
+/** Take the demo merchant's products off sale (hidden everywhere; past orders and receipts stay). */
+export function unseedDemo() {
+  return { removed: products.deactivateByMerchantName(DEMO_MERCHANT) };
 }

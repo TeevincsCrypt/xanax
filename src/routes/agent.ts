@@ -4,7 +4,7 @@ import { buyUrl, productJson } from "../catalog.js";
 import { merchants, orders, products } from "../db.js";
 import { safeEqual, verifyDownload } from "../security.js";
 import { clientIp, limitApi } from "../limits.js";
-import { seedDemo } from "../seed.js";
+import { seedDemo, unseedDemo } from "../seed.js";
 import { downloadPage, messagePage, receiptPage } from "../views/pages.js";
 import { RECEIPT_EXAMPLE } from "../x402.js";
 
@@ -112,9 +112,17 @@ agent.get("/.well-known/x402", (c) =>
 
 agent.get("/health", (c) => c.json({ ok: true, network: config.network.label }));
 
+function isAdmin(auth: string | undefined): boolean {
+  return Boolean(config.ADMIN_TOKEN) && safeEqual(auth ?? "", `Bearer ${config.ADMIN_TOKEN}`);
+}
+
+agent.post("/admin/unseed", (c) => {
+  if (!isAdmin(c.req.header("authorization"))) return c.json({ error: "unauthorized" }, 401);
+  return c.json(unseedDemo());
+});
+
 agent.post("/admin/seed", async (c) => {
-  const auth = c.req.header("authorization") ?? "";
-  if (!config.ADMIN_TOKEN || !safeEqual(auth, `Bearer ${config.ADMIN_TOKEN}`)) return c.json({ error: "unauthorized" }, 401);
+  if (!isAdmin(c.req.header("authorization"))) return c.json({ error: "unauthorized" }, 401);
   try {
     return c.json(await seedDemo());
   } catch (err) {

@@ -314,3 +314,25 @@ describe("merchant + agent pages", () => {
     expect(w.resources).toContain(`https://xanax.test/buy/${coffeeId}`);
   });
 });
+
+describe("admin unseed", () => {
+  it("takes demo products off sale but keeps their orders and receipts", async () => {
+    const { seedDemo } = await import("../src/seed.js");
+    process.env.ADMIN_TOKEN = "";
+    const seeded = await seedDemo(MERCHANT);
+    const guide = "p_lagosguide";
+    const paid = await payingFetch(`https://xanax.test/buy/${guide}`, { method: "POST" });
+    const receipt = await paid.json();
+    expect(receipt.status, JSON.stringify(receipt).slice(0, 300)).toBe("paid");
+
+    const { unseedDemo } = await import("../src/seed.js");
+    const res = unseedDemo();
+    expect(res.removed.map((p) => p.id).sort()).toEqual(seeded.products.map((p) => p.id).sort());
+
+    expect((await appFetch(`https://xanax.test/buy/${guide}`, { method: "POST" })).status).toBe(404);
+    const list = await (await appFetch("https://xanax.test/api/products")).json();
+    expect(list.products.map((p: any) => p.id)).not.toContain(guide);
+    expect((await appFetch(`https://xanax.test/r/${receipt.order_id}`)).status).toBe(200);
+    expect(unseedDemo().removed).toEqual([]); // idempotent
+  });
+});

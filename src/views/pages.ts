@@ -261,7 +261,7 @@ ${flash ? html`<div class="alert ok">${flash}</div>` : ""}
 <tr><th>Product</th><th>Price</th><th>Stock</th><th>Agent URL</th></tr>
 ${products.map(
   (p) => html`<tr><td><b>${p.name}</b><div class="muted tiny">${p.kind === "digital" ? "Instant digital delivery" : "You fulfil"} · requires: ${p.required_fields.join(", ") || "nothing"}</div></td>
-<td>$${formatUsd(p.price_cents)}</td><td>${p.stock ?? "∞"}</td><td class="mono tiny" style="word-break:break-all">${buyUrl(p.id)}</td></tr>`,
+<td>$${formatUsd(p.price_cents)}</td><td>${p.active ? p.stock ?? "∞" : html`<span class="pill bad">Removed</span>`}</td><td class="mono tiny" style="word-break:break-all">${buyUrl(p.id)}</td></tr>`,
 )}
 </table></div>
 

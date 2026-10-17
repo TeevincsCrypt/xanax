@@ -202,6 +202,18 @@ export const products = {
       (r) => toProduct(r)!,
     );
   },
+  /** Hide every product of the merchants with this exact business name. Orders and receipts are kept. */
+  deactivateByMerchantName(businessName: string): Array<{ id: string; name: string }> {
+    const rows = db()
+      .prepare(
+        "SELECT p.id, p.name FROM products p JOIN merchants m ON m.id = p.merchant_id WHERE m.business_name = ? AND p.active = 1",
+      )
+      .all(businessName) as Array<{ id: string; name: string }>;
+    db()
+      .prepare("UPDATE products SET active = 0 WHERE merchant_id IN (SELECT id FROM merchants WHERE business_name = ?)")
+      .run(businessName);
+    return rows.map((r) => ({ id: String(r.id), name: String(r.name) }));
+  },
   /** Atomically take `qty` units of stock. Returns false if not enough. Unlimited stock always succeeds. */
   reserveStock(id: string, qty: number): boolean {
     const res = db()

@@ -27,7 +27,11 @@ function shortHash(h: string) {
 export function buyerPrompt(p: Product, merchantName: string): string {
   const needs = p.required_fields.map((f) => FIELD_LABELS[f]!.toLowerCase());
   const tail = needs.length ? ` with my ${needs.join(", ").replace(/, ([^,]*)$/, " and $1")}` : "";
-  return `Use PayBox to buy 1 × ${p.name} from ${merchantName}: use_service with method POST on ${buyUrl(p.id)}${tail}.`;
+  const after =
+    p.kind === "digital"
+      ? "When it's done, show me the full message from the response, including the download link and the receipt link."
+      : "When it's done, show me the full message from the response, including the order ID and the receipt link.";
+  return `Use PayBox to buy 1 × ${p.name} from ${merchantName}: use_service with method POST on ${buyUrl(p.id)}${tail}. ${after}`;
 }
 
 const ART = {
@@ -338,6 +342,7 @@ export function receiptPage(order: Order, product: Product, merchant: Merchant):
   </dl>
   <div class="receipt-actions">
     <a class="btn" href="/r/${order.id}.pdf">Download PDF receipt</a>
+    ${product.kind === "digital" ? html`<a class="btn blue" href="/find?order=${order.id}">Get my download</a>` : ""}
     <a class="btn ghost" href="${explorerTxUrl(order.tx_hash, order.network)}" target="_blank" rel="noopener">View on Basescan</a>
   </div>
   <p class="tiny muted" style="margin:22px 0 0">Paid by an AI agent over x402. USDC went straight to the merchant's wallet; ${APP_NAME} never held it. Buyer details are private to the merchant.</p>
@@ -371,4 +376,41 @@ export function downloadPage(order: Order, product: Product, merchant: Merchant,
 
 export function messagePage(title: string, message: string, status = "bad"): string {
   return layout(`${title} · ${APP_NAME}`, html`<div class="card" style="max-width:620px;margin:40px auto"><span class="pill ${status}">${title}</span><p>${message}</p><p><a href="/">← Home</a></p></div>`, { noindex: true });
+}
+
+export function findOrderPage(args: { order?: string; contact?: string; error?: string }): string {
+  return layout(
+    `Find my order · ${APP_NAME}`,
+    html`
+<div class="receipt" style="max-width:520px">
+  <h1 style="font-size:clamp(28px,4.5vw,38px);margin-top:0">Find my order</h1>
+  <p class="muted">Lost your download or receipt? No account needed. Enter your order ID (it starts with <code>xnx_</code> and is in your agent's reply) and the email you gave at checkout, or the wallet address you paid from.</p>
+  ${args.error ? html`<div class="alert bad">${args.error}</div>` : ""}
+  <form method="post" action="/find">
+    <label for="order">Order ID</label><input id="order" name="order" required class="mono" value="${args.order ?? ""}" placeholder="xnx_…" autocomplete="off" spellcheck="false">
+    <label for="contact">Email or paying wallet address</label><input id="contact" name="contact" required value="${args.contact ?? ""}" placeholder="you@example.com or 0x…" autocomplete="off" spellcheck="false">
+    <p style="margin-top:22px"><button class="btn" type="submit">Find my order</button></p>
+  </form>
+</div>`,
+    { noindex: true },
+  );
+}
+
+export function foundOrderPage(order: Order, product: Product, merchant: Merchant, download?: string): string {
+  return layout(
+    `Your order · ${APP_NAME}`,
+    html`
+<div class="receipt" style="max-width:560px">
+  <span class="pill ok">Order found</span>
+  <h1 style="font-size:clamp(26px,4vw,34px);margin:14px 0 4px">${order.quantity} × ${product.name}</h1>
+  <p class="muted" style="margin-top:0">from ${merchant.business_name} · $${formatUsd(order.amount_cents)} USDC · <span class="mono">${order.id}</span></p>
+  <div class="receipt-actions">
+    ${download ? html`<a class="btn blue" href="${download}">Download your product</a>` : ""}
+    <a class="btn" href="/r/${order.id}.pdf">Receipt (PDF)</a>
+    <a class="btn ghost" href="/r/${order.id}">View receipt</a>
+  </div>
+  ${download ? html`<p class="tiny muted" style="margin-top:16px">The download link is valid for 7 days. You can come back here any time for a fresh one.</p>` : html`<p class="small muted" style="margin-top:16px">${merchant.business_name} fulfils this order directly${order.buyer.email ? " and will contact you at the email you provided" : ""}.</p>`}
+</div>`,
+    { noindex: true },
+  );
 }

@@ -129,7 +129,7 @@ ${opts.noindex ? raw('<meta name="robots" content="noindex">') : ""}
 <main class="wrap">
 ${body}
 </main>
-<footer class="foot"><span><b style="color:var(--ink)">${APP_NAME}</b> · Agent checkout over x402 · USDC on ${config.network.testnet ? "Base Sepolia (testnet)" : "Base"} · Works with PayBox</span><span>Funds go straight to merchant wallets. ${APP_NAME} never holds them.</span></footer>
+<footer class="foot"><span><b style="color:var(--ink)">${APP_NAME}</b> · Agent checkout over x402 · USDC on ${config.network.testnet ? "Base Sepolia (testnet)" : "Base"} · Works with PayBox</span><span><a href="/find">Find my order</a> · Funds go straight to merchant wallets. ${APP_NAME} never holds them.</span></footer>
 </div>
 <script>${raw(COPY_JS)}</script>
 </body></html>`.value;

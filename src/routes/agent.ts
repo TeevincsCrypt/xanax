@@ -3,9 +3,10 @@ import { APP_NAME, config } from "../config.js";
 import { buyUrl, productJson } from "../catalog.js";
 import { merchants, orders, products } from "../db.js";
 import { safeEqual, verifyDownload } from "../security.js";
-import { clientIp, limitApi } from "../limits.js";
+import { clientIp, limitApi, limitFind } from "../limits.js";
 import { seedDemo, unseedDemo } from "../seed.js";
-import { downloadPage, messagePage, receiptPage } from "../views/pages.js";
+import { downloadPage, findOrderPage, foundOrderPage, messagePage, receiptPage } from "../views/pages.js";
+import { downloadLink } from "../receipt.js";
 import { receiptPdf } from "../pdf.js";
 import { readUpload } from "../uploads.js";
 import { RECEIPT_EXAMPLE } from "../x402.js";
@@ -49,6 +50,29 @@ agent.get("/r/:orderId", async (c) => {
   c.header("Content-Disposition", `attachment; filename="receipt-${order.id}.pdf"`);
   c.header("Cache-Control", "private, max-age=60");
   return c.body(new Uint8Array(pdf));
+});
+
+// "Find my order": no account needed. Order ID (a secret only buyer and seller see) plus a second
+// factor the buyer knows: the email they gave at checkout, or the wallet that paid.
+agent.get("/find", (c) => c.html(findOrderPage({ order: c.req.query("order") })));
+
+agent.post("/find", async (c) => {
+  if (!limitFind(clientIp(c))) return c.html(findOrderPage({ error: "Too many attempts. Try again in a few minutes." }), 429);
+  const form = await c.req.parseBody();
+  const orderId = String(form.order ?? "").trim();
+  const contact = String(form.contact ?? "").trim().toLowerCase();
+  const order = /^xnx_[a-z0-9]{6,32}$/.test(orderId) ? orders.get(orderId) : undefined;
+  const matches =
+    order &&
+    contact.length > 3 &&
+    ((order.buyer.email && order.buyer.email.toLowerCase() === contact) || (order.payer_address && order.payer_address.toLowerCase() === contact));
+  if (!order || !matches) {
+    return c.html(findOrderPage({ order: orderId, contact, error: "We couldn't find an order with those details. Check the order ID, and use the email you gave at checkout or the wallet address you paid from." }), 404);
+  }
+  const product = products.getAny(order.product_id)!;
+  const merchant = merchants.get(order.merchant_id)!;
+  c.header("Cache-Control", "private, no-store");
+  return c.html(foundOrderPage(order, product, merchant, product.kind === "digital" ? downloadLink(order.id).url : undefined));
 });
 
 // Uploaded product images (public).
@@ -129,7 +153,8 @@ agent.get("/llms.txt", (c) => {
 ${JSON.stringify(RECEIPT_EXAMPLE, null, 2)}
 
 Digital products also include "delivery": {"type": "download", "download_url": "...", "expires_at": "..."}.
-Relay order_id, amount, next_steps and receipt_url to the user.
+Relay the "message" field to the user verbatim: it has the order ID, the download link (digital) and the PDF receipt link.
+Lost it? The buyer can recover the download and receipt at ${config.BASE_URL}/find with the order ID plus their checkout email or paying wallet.
 
 ## Live products
 

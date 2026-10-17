@@ -203,3 +203,30 @@ describe("digital delivery safety net", () => {
     expect(await (await req(`/account/stores/${product.merchant_id}`, { headers: { cookie } })).text()).toContain("Copy download link");
   });
 });
+
+describe("find my order (no account)", () => {
+  it("returns the download and receipt for order ID + checkout email or paying wallet, and nothing otherwise", async () => {
+    await req("/sell", { method: "POST", body: sellForm({ delivery_text: "the goods" }) });
+    const product = products.search("Photo pack")[0]!;
+    const r = await (
+      await pay(`https://xanax.test/buy/${product.id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ buyer: { email: "Buyer@Example.com" } }) })
+    ).json();
+    const find = (order: string, contact: string) =>
+      req("/find", { method: "POST", body: new URLSearchParams({ order, contact }), headers: { "content-type": "application/x-www-form-urlencoded" } });
+
+    const byEmail = await find(r.order_id, "buyer@example.com");
+    expect(byEmail.status).toBe(200);
+    const html = await byEmail.text();
+    expect(html).toContain("Download your product");
+    expect(html).toContain(`/r/${r.order_id}.pdf`);
+
+    expect((await find(r.order_id, buyer.address)).status).toBe(200);
+    expect((await find(r.order_id, "someone@else.com")).status).toBe(404);
+    expect((await find("xnx_doesnotexist1", "buyer@example.com")).status).toBe(404);
+  });
+
+  it("asks the agent to show the links in the buyer prompt", async () => {
+    const res = await req("/sell", { method: "POST", body: sellForm({ delivery_text: "the goods" }) });
+    expect(await res.text()).toContain("including the download link and the receipt link");
+  });
+});

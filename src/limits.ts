@@ -18,3 +18,4 @@ export const limitBuy = rateLimiter(60, 60_000);
 export const limitSell = rateLimiter(10, 10 * 60_000);
 export const limitApi = rateLimiter(120, 60_000);
 export const limitDashboard = rateLimiter(60, 60_000);
+export const limitFind = rateLimiter(10, 10 * 60_000);

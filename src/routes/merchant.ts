@@ -7,7 +7,7 @@ import { deliverWebhook } from "../notify.js";
 import { receiptPdf } from "../pdf.js";
 import { sha256Hex } from "../security.js";
 import { clientIp, limitDashboard, limitSell } from "../limits.js";
-import { dashboardPage, landingPage, messagePage, sellPage, sellSuccessPage } from "../views/pages.js";
+import { dashboardPage, landingPage, marketPage, messagePage, sellPage, sellSuccessPage } from "../views/pages.js";
 import { accountPage, loginPage } from "../views/account.js";
 
 export const merchant = new Hono();
@@ -189,6 +189,15 @@ merchant.post("/auth/session", async (c) => {
 merchant.post("/auth/logout", (c) => {
   signOut(c);
   return c.json({ ok: true });
+});
+
+// Marketplace: every live listing, for everyone with an account.
+merchant.get("/market", (c) => {
+  const user = currentUser(c);
+  if (!user && config.authEnabled) return c.redirect("/login?next=/market", 302);
+  const q = (c.req.query("q") ?? "").trim().slice(0, 100);
+  const myMerchantIds = new Set(user ? merchants.byUser(user.id).map((m) => m.id) : []);
+  return c.html(marketPage(products.search(q, 200), { q, myMerchantIds, email: user?.email ?? null }));
 });
 
 merchant.get("/account", (c) => {

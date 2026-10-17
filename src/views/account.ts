@@ -70,7 +70,7 @@ export function accountPage(d: AccountData): string {
     html`
 <div class="page-head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap">
   <div><div class="muted small">Signed in as</div><h1 style="margin:4px 0 0">${d.user.email ?? (d.user.wallet ? `${d.user.wallet.slice(0, 6)}…${d.user.wallet.slice(-4)}` : "your account")}</h1></div>
-  <div style="display:flex;gap:10px;flex-wrap:wrap"><a class="btn" href="/sell">New listing</a><a class="btn ghost" href="/logout">Sign out</a></div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap"><a class="btn" href="/sell">New listing</a><a class="btn ghost" href="/market">Marketplace</a><a class="btn ghost" href="/logout">Sign out</a></div>
 </div>
 
 <div class="grid" style="margin-top:20px">

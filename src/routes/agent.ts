@@ -10,6 +10,7 @@ import { downloadLink } from "../receipt.js";
 import { receiptPdf } from "../pdf.js";
 import { readUpload } from "../uploads.js";
 import { RECEIPT_EXAMPLE } from "../x402.js";
+import { currentUser } from "../auth.js";
 
 export const agent = new Hono();
 
@@ -56,7 +57,8 @@ agent.get("/r/:orderId", async (c) => {
 agent.get("/p/:id", (c) => {
   const p = products.get(c.req.param("id"));
   if (!p) return c.html(messagePage("Not found", "This product isn't available."), 404);
-  return c.html(productPage(p, merchants.get(p.merchant_id)!));
+  const user = currentUser(c);
+  return c.html(productPage(p, merchants.get(p.merchant_id)!, user ? { email: user.email, userId: user.id } : undefined));
 });
 
 // "Find my order": no account needed. Order ID (a secret only buyer and seller see) plus a second

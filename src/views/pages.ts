@@ -24,9 +24,11 @@ function shortHash(h: string) {
   return h.length > 14 ? `${h.slice(0, 8)}…${h.slice(-6)}` : h;
 }
 
-export function buyerPrompt(p: Product, merchantName: string): string {
-  const needs = p.required_fields.map((f) => FIELD_LABELS[f]!.toLowerCase());
-  const tail = needs.length ? ` with my ${needs.join(", ").replace(/, ([^,]*)$/, " and $1")}` : "";
+export function buyerPrompt(p: Product, merchantName: string, buyerEmail?: string | null): string {
+  // A signed-in buyer's email goes in the body, so the order lands in their Account (and /find works).
+  const needs = p.required_fields.filter((f) => !(buyerEmail && f === "email")).map((f) => FIELD_LABELS[f]!.toLowerCase());
+  const parts = [needs.length ? `my ${needs.join(", ").replace(/, ([^,]*)$/, " and $1")}` : "", buyerEmail ? `my email ${buyerEmail} as buyer.email in the JSON body` : ""].filter(Boolean);
+  const tail = parts.length ? ` with ${parts.join(", and ")}` : "";
   const links = p.kind === "digital" ? "the download link and the receipt link" : "the order ID and the receipt link";
   // With PayBox the payment completes in its signing window after use_service returns, so the agent
   // must fetch the finished result with get_request to see our receipt.
@@ -129,21 +131,42 @@ export function landingPage(list: Array<Product & { business_name: string }>, st
 ${
   list.length === 0
     ? html`<p class="muted">No products yet. <a href="/sell">Be the first.</a></p>`
-    : html`<div class="grid">${list.map(
-        (p) => html`<div class="card prod">
+    : html`<div class="grid">${list.slice(0, 6).map((p) => productCard(p))}</div>
+<p style="margin-top:18px"><a class="btn ghost" href="/market">Browse the full marketplace →</a></p>`
+}
+`,
+  );
+}
+
+/** Marketplace card; links to the product page. */
+export function productCard(p: Product & { business_name: string }, opts: { mine?: boolean } = {}): SafeHtml {
+  return html`<a class="card prod" href="/p/${p.id}" style="color:inherit;text-decoration:none">
   ${p.image_url ? html`<img src="${p.image_url}" alt="" loading="lazy" referrerpolicy="no-referrer">` : html`<div class="tile" style="--h:${hue(p.name)}">${p.name.slice(0, 1).toUpperCase()}</div>`}
-  <div class="muted small">${p.business_name}</div>
+  <div class="muted small">${p.business_name}${opts.mine ? html` · <span class="pill blue">Your listing</span>` : ""}</div>
   <h3>${p.name}</h3>
   <p class="muted small" style="margin:0">${p.description.length > 140 ? p.description.slice(0, 140) + "…" : p.description}</p>
   <div class="foot">
     <span class="price">$${formatUsd(p.price_cents)}</span>
     ${p.stock !== null && p.stock <= 0 ? html`<span class="pill bad">Sold out</span>` : p.kind === "digital" ? html`<span class="pill ok">Instant delivery</span>` : html`<span class="pill blue">Ships</span>`}
   </div>
-  <p class="tiny muted mono" style="margin:12px 0 0;word-break:break-all">POST ${buyUrl(p.id)}</p>
-</div>`,
-      )}</div>`
+</a>`;
 }
-`,
+
+export function marketPage(list: Array<Product & { business_name: string }>, args: { q: string; myMerchantIds: Set<string>; email: string | null }): string {
+  return layout(
+    `Marketplace · ${APP_NAME}`,
+    html`
+<div class="page-head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap">
+  <div><h1 style="margin:0">Marketplace</h1><p class="muted" style="margin:8px 0 0">Every live listing on ${APP_NAME}. Open one, copy your prompt, and your AI buys it with PayBox.${args.email ? html` Purchases land in your <a href="/account">Account</a>.` : ""}</p></div>
+  <form method="get" action="/market" style="display:flex;gap:8px;min-width:min(100%,360px)"><input name="q" value="${args.q}" placeholder="Search products or sellers" aria-label="Search"><button class="btn" type="submit">Search</button></form>
+</div>
+${
+  list.length === 0
+    ? html`<div class="card muted" style="margin-top:20px">${args.q ? html`Nothing matches “${args.q}”. <a href="/market">Clear search</a>.` : html`No listings yet. <a href="/sell">Be the first to sell.</a>`}</div>`
+    : html`<p class="muted small" style="margin:18px 0 12px">${list.length} listing${list.length === 1 ? "" : "s"}${args.q ? html` for “${args.q}”` : ""}</p>
+<div class="grid">${list.map((p) => productCard(p, { mine: args.myMerchantIds.has(p.merchant_id) }))}</div>`
+}`,
+    { noindex: true },
   );
 }
 
@@ -422,7 +445,8 @@ export function productPageUrl(id: string): string {
 }
 
 /** Human-facing product page: what browsers see at /p/:id and at the agent URL /buy/:id. */
-export function productPage(p: Product, merchant: Merchant): string {
+export function productPage(p: Product, merchant: Merchant, viewer?: { email: string | null; userId: string }): string {
+  const mine = Boolean(viewer && merchant.user_id === viewer.userId);
   const soldOut = p.stock !== null && p.stock <= 0;
   return layout(
     `${p.name} · ${merchant.business_name} · ${APP_NAME}`,
@@ -449,7 +473,9 @@ export function productPage(p: Product, merchant: Merchant): string {
         <li>Paste this prompt and approve the payment with your passkey.</li>
         <li>Your agent shows your receipt${p.kind === "digital" ? " and download link" : ""}.</li>
       </ol>
-      ${copyField("prompt", buyerPrompt(p, merchant.business_name), true)}
+      ${copyField("prompt", buyerPrompt(p, merchant.business_name, viewer?.email), true)}
+      ${viewer?.email ? html`<p class="hint">Personalised for ${viewer.email}: this purchase, its receipt${p.kind === "digital" ? " and download" : ""} will show under <a href="/account">Account → Purchases</a>.</p>` : !viewer ? html`<p class="hint">Have a ${APP_NAME} account? <a href="/login?next=/p/${p.id}">Sign in</a> to get a prompt that saves this purchase to your account.</p>` : ""}
+      ${mine ? html`<p class="hint"><b>This is your listing.</b> Share this page's link with buyers who don't have a ${APP_NAME} account.</p>` : ""}
       ${p.required_fields.length ? html`<p class="hint">The seller needs your ${p.required_fields.map((f) => FIELD_LABELS[f]!.toLowerCase()).join(", ")}; your agent will ask or fill them in.</p>` : ""}
     </div>`
     }

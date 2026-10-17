@@ -10,6 +10,7 @@ import { randomId } from "../security.js";
 import { ensureInitialized, httpServer, paymentNonce, readPaymentHeader, XanaxAdapter } from "../x402.js";
 import { clientIp, limitBuy } from "../limits.js";
 import { productPage } from "../views/pages.js";
+import { currentUser } from "../auth.js";
 
 export const buy = new Hono();
 
@@ -40,7 +41,8 @@ async function handleBuy(c: Context) {
   const ua = c.req.header("user-agent") ?? "";
   const hasPayment = Boolean(c.req.header("payment-signature") || c.req.header("x-payment"));
   if (c.req.method === "GET" && !hasPayment && accept.includes("text/html") && ua.includes("Mozilla")) {
-    return c.html(productPage(product, merchant));
+    const user = currentUser(c);
+    return c.html(productPage(product, merchant, user ? { email: user.email, userId: user.id } : undefined));
   }
 
   const qtyParsed = parseQty(c.req.query("qty"));

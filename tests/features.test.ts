@@ -279,3 +279,39 @@ describe("selling requires an account", () => {
     }
   });
 });
+
+describe("marketplace", () => {
+  it("shows every live listing to signed-in users and personalises the buy prompt", async () => {
+    const { config } = await import("../src/config.js");
+    const before = config.authEnabled;
+    (config as { authEnabled: boolean }).authEnabled = true;
+    try {
+      const sellerA = await login("sa", "a@example.com");
+      const sellerB = await login("sb", "b@example.com");
+      await req("/sell", { method: "POST", body: sellForm({ business_name: "Shop A", product_name: "Alpha guide", delivery_text: "a" }), headers: { cookie: sellerA } });
+      await req("/sell", { method: "POST", body: sellForm({ business_name: "Shop B", product_name: "Beta pack", delivery_text: "b" }), headers: { cookie: sellerB } });
+
+      expect((await req("/market")).status).toBe(302); // signed out → sign in
+
+      const buyerCookie = await login("buyer", "buyer@example.com");
+      const market = await (await req("/market", { headers: { cookie: buyerCookie } })).text();
+      expect(market).toContain("Alpha guide");
+      expect(market).toContain("Beta pack");
+      const filtered = await (await req("/market?q=beta", { headers: { cookie: buyerCookie } })).text();
+      expect(filtered).toContain("Beta pack");
+      expect(filtered).not.toContain("Alpha guide");
+      expect(await (await req("/market", { headers: { cookie: sellerA } })).text()).toContain("Your listing");
+
+      const alpha = products.search("Alpha guide")[0]!;
+      const page = await (await req(`/p/${alpha.id}`, { headers: { cookie: buyerCookie } })).text();
+      expect(page).toContain("my email buyer@example.com as buyer.email");
+      expect(page).toContain("Account → Purchases");
+      // Signed out: generic prompt plus a nudge to sign in.
+      const anon = await (await req(`/p/${alpha.id}`)).text();
+      expect(anon).not.toContain("buyer@example.com");
+      expect(anon).toContain("Sign in");
+    } finally {
+      (config as { authEnabled: boolean }).authEnabled = before;
+    }
+  });
+});

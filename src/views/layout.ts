@@ -126,7 +126,7 @@ ${opts.noindex ? raw('<meta name="robots" content="noindex">') : ""}
 </head><body>
 <div class="frame">
 <header class="top"><a class="brand" href="/">${raw(LOGO_SVG)}${APP_NAME}</a>
-<nav class="pills"><a class="hide-sm" href="/#how">How it works</a><a class="hide-sm" href="/#agents">For agents</a><a class="hide-sm" href="/#products">Products</a><a href="/account">Account</a><a class="cta" href="/sell">Start selling</a></nav></header>
+<nav class="pills"><a class="hide-sm" href="/#how">How it works</a><a class="hide-sm" href="/#agents">For agents</a><a class="hide-sm" href="/market">Marketplace</a><a href="/account">Account</a><a class="cta" href="/sell">Start selling</a></nav></header>
 <main class="wrap">
 ${body}
 </main>

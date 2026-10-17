@@ -14,7 +14,7 @@ export function orderPayload(order: Order, product: Product) {
     currency: "USDC",
     network: order.network,
     tx_hash: order.tx_hash,
-    explorer_url: explorerTxUrl(order.tx_hash),
+    explorer_url: explorerTxUrl(order.tx_hash, order.network),
     payer: order.payer_address,
     buyer: order.buyer,
     created_at: order.created_at,

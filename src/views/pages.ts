@@ -215,7 +215,7 @@ ${orders.map((o) => {
 <td>${o.quantity} × ${p?.name ?? o.product_id}</td>
 <td>$${formatUsd(o.amount_cents)}</td>
 <td class="small">${Object.keys(o.buyer).length ? Object.entries(o.buyer).map(([k, v]) => html`<div><span class="muted">${FIELD_LABELS[k] ?? k}:</span> ${v}</div>`) : html`<span class="muted">—</span>`}</td>
-<td class="mono tiny"><a href="${explorerTxUrl(o.tx_hash)}" target="_blank" rel="noopener">${shortHash(o.tx_hash)}</a></td>
+<td class="mono tiny"><a href="${explorerTxUrl(o.tx_hash, o.network)}" target="_blank" rel="noopener">${shortHash(o.tx_hash)}</a></td>
 <td>${webhookPill(o)}${merchant.webhook_url ? html`<form method="post" action="/m/${token}/orders/${o.id}/resend" style="margin-top:6px"><button class="btn sm ghost" type="submit">Resend</button></form>` : ""}</td>
 <td>${statusPill(o)}${o.status === "paid" ? html`<form method="post" action="/m/${token}/orders/${o.id}/fulfil" style="margin-top:6px"><button class="btn sm" type="submit">Mark fulfilled</button></form>` : ""}</td>
 </tr>`;
@@ -239,7 +239,7 @@ export function receiptPage(order: Order, product: Product, merchant: Merchant):
     <dt>Order</dt><dd class="mono">${order.id}</dd>
     <dt>Date</dt><dd>${order.created_at.replace("T", " ").slice(0, 19)} UTC</dd>
     <dt>Network</dt><dd>${order.network === "base" ? "Base" : "Base Sepolia"}</dd>
-    <dt>Transaction</dt><dd class="mono"><a href="${explorerTxUrl(order.tx_hash)}" target="_blank" rel="noopener">${order.tx_hash}</a></dd>
+    <dt>Transaction</dt><dd class="mono"><a href="${explorerTxUrl(order.tx_hash, order.network)}" target="_blank" rel="noopener">${order.tx_hash}</a></dd>
     <dt>Paid to</dt><dd class="mono">${merchant.payout_address}</dd>
     <dt>Status</dt><dd>${order.status === "fulfilled" ? "Fulfilled" : product.kind === "digital" ? "Delivered" : "Paid, awaiting fulfilment"}</dd>
   </dl>

@@ -73,6 +73,8 @@ export const config = {
   emailEnabled: Boolean(env.RESEND_API_KEY && env.EMAIL_FROM),
 };
 
-export function explorerTxUrl(txHash: string): string {
-  return `${config.network.explorer}/tx/${txHash}`;
+/** Explorer link for a tx on the network it was paid on (old testnet orders keep testnet links). */
+export function explorerTxUrl(txHash: string, network: string = config.network.label): string {
+  const explorer = network === "base" ? NETWORKS.base.explorer : NETWORKS["base-sepolia"].explorer;
+  return `${explorer}/tx/${txHash}`;
 }

@@ -14,7 +14,8 @@ export function createApp() {
       contentSecurityPolicy: {
         defaultSrc: ["'self'"],
         imgSrc: ["'self'", "https:", "data:"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
         scriptSrc: ["'self'", "'unsafe-inline'"],
         frameAncestors: ["'none'"],
       },

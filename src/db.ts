@@ -274,6 +274,10 @@ export const orders = {
   recordEmail(id: string, status: Order["email_status"]): void {
     db().prepare("UPDATE orders SET email_status = ? WHERE id = ?").run(status, id);
   },
+  stats(): { orders: number; volumeCents: number } {
+    const r = db().prepare("SELECT COUNT(*) AS n, COALESCE(SUM(amount_cents), 0) AS v FROM orders").get() as { n: number; v: number };
+    return { orders: Number(r.n), volumeCents: Number(r.v) };
+  },
   markFulfilled(id: string, merchantId: string): boolean {
     const res = db()
       .prepare(

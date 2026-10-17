@@ -8,7 +8,11 @@ import { dashboardPage, landingPage, messagePage, sellPage, sellSuccessPage } fr
 
 export const merchant = new Hono();
 
-merchant.get("/", (c) => c.html(landingPage(products.search(undefined, 24))));
+merchant.get("/", (c) => {
+  const list = products.search(undefined, 24);
+  const { orders: n, volumeCents } = orders.stats();
+  return c.html(landingPage(list, { products: products.search(undefined, 1000).length, orders: n, volumeCents }));
+});
 
 merchant.get("/sell", (c) => c.html(sellPage()));
 

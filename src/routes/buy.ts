@@ -12,6 +12,15 @@ import { clientIp, limitBuy } from "../limits.js";
 
 export const buy = new Hono();
 
+/** Plain-English explanation of common facilitator rejections. */
+function paymentHint(reason: string): string {
+  if (reason.includes("insufficient_balance")) return `The paying wallet doesn't have enough USDC on ${config.network.label}. Nothing was charged.`;
+  if (reason.includes("nonce_used")) return "This payment authorization was already used. Sign a new payment. Nothing was charged twice.";
+  if (reason.includes("expired") || reason.includes("valid_before") || reason.includes("valid_after")) return "The payment authorization expired or isn't valid yet. Retry with a fresh payment.";
+  if (reason.includes("network") || reason.includes("recipient") || reason.includes("amount") || reason.includes("No matching")) return "The payment doesn't match these requirements (network, amount or recipient). Re-read the 402 and pay again.";
+  return "The payment was rejected. Nothing was charged. Check the error and retry.";
+}
+
 function replay(c: Context, order: Order) {
   const product = products.get(order.product_id)!;
   const merchant = merchants.get(order.merchant_id)!;
@@ -84,8 +93,9 @@ async function handleBuy(c: Context) {
     if (header) {
       try {
         const pr = decodePaymentRequiredHeader(header);
-        body = { x402Version: pr.x402Version, ...body, accepts: pr.accepts, resource: pr.resource, extensions: pr.extensions };
-        if (pr.error && pr.error !== "Payment required") body.error = pr.error;
+        // A rejected payment: lead with the reason so an agent (or a human) sees it first.
+        const failure = pr.error && pr.error !== "Payment required" ? { error: pr.error, hint: paymentHint(pr.error) } : {};
+        body = { ...failure, x402Version: pr.x402Version, ...body, ...failure, accepts: pr.accepts, resource: pr.resource, extensions: pr.extensions };
       } catch {
         /* header is authoritative; body echo is best-effort */
       }

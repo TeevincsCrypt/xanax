@@ -149,6 +149,11 @@ export function openDb(url = config.DATABASE_URL): DatabaseSync {
   addColumn("merchants", "user_id", "TEXT");
   addColumn("products", "delivery_file_id", "TEXT");
   db.exec("CREATE INDEX IF NOT EXISTS merchants_user ON merchants(user_id)");
+  // Listings saved as "physical" despite having digital content to deliver (the delivery radio was
+  // left on its default) become digital, so their buyers get a download link.
+  db.exec(
+    "UPDATE products SET kind = 'digital' WHERE kind = 'physical' AND (delivery_text IS NOT NULL OR delivery_url IS NOT NULL OR delivery_file_id IS NOT NULL)",
+  );
   return db;
 }
 

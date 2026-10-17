@@ -2,6 +2,7 @@ import { APP_NAME, config, explorerTxUrl } from "../config.js";
 import { buyUrl, formatUsd } from "../catalog.js";
 import type { Merchant, Order, Product, User } from "../db.js";
 import { layout } from "./layout.js";
+import { downloadLink } from "../receipt.js";
 import { html } from "./html.js";
 
 function when(iso: string) {
@@ -111,7 +112,7 @@ ${
 <tr><th>When</th><th>Item</th><th>Merchant</th><th>Amount</th><th>Receipt</th></tr>
 ${d.purchases.map(
   (x) => html`<tr><td class="tiny">${when(x.order.created_at)}</td><td>${x.order.quantity} × ${x.product?.name ?? "item"}</td><td>${x.merchant?.business_name ?? ""}</td><td>$${formatUsd(x.order.amount_cents)}</td>
-<td><a class="btn sm ghost" href="/r/${x.order.id}">View</a> <a class="btn sm ghost" href="/r/${x.order.id}.pdf">PDF</a> <a class="tiny" href="${explorerTxUrl(x.order.tx_hash, x.order.network)}" target="_blank" rel="noopener">tx</a></td></tr>`,
+<td>${x.product?.kind === "digital" ? html`<a class="btn sm blue" href="${downloadLink(x.order.id).url}">Download</a> ` : ""}<a class="btn sm ghost" href="/r/${x.order.id}">View</a> <a class="btn sm ghost" href="/r/${x.order.id}.pdf">PDF</a> <a class="tiny" href="${explorerTxUrl(x.order.tx_hash, x.order.network)}" target="_blank" rel="noopener">tx</a></td></tr>`,
 )}
 </table></div>`
 }`,

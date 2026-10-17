@@ -2,6 +2,7 @@ import { APP_NAME, config, explorerTxUrl } from "../config.js";
 import { buyUrl, formatUsd } from "../catalog.js";
 import { BUYER_FIELDS, type Merchant, type Order, type Product } from "../db.js";
 import { copyField, layout } from "./layout.js";
+import { downloadLink } from "../receipt.js";
 import { html, raw, type SafeHtml } from "./html.js";
 
 const FIELD_LABELS: Record<string, string> = {
@@ -296,7 +297,9 @@ ${orders.map((o) => {
   const p = byId.get(o.product_id);
   return html`<tr>
 <td class="tiny">${o.created_at.replace("T", " ").slice(0, 16)} UTC</td>
-<td class="mono tiny"><a href="/r/${o.id}">${o.id}</a><div style="margin-top:6px"><a class="btn sm ghost" href="${base}/orders/${o.id}/receipt.pdf">Receipt PDF</a></div></td>
+<td class="mono tiny"><a href="/r/${o.id}">${o.id}</a><div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><a class="btn sm ghost" href="${base}/orders/${o.id}/receipt.pdf">Receipt PDF</a>${
+    p?.kind === "digital" ? html`<button type="button" class="btn sm ghost" data-copy="dl-${o.id}">Copy download link</button><span id="dl-${o.id}" hidden>${downloadLink(o.id).url}</span>` : ""
+  }</div></td>
 <td>${o.quantity} × ${p?.name ?? o.product_id}</td>
 <td>$${formatUsd(o.amount_cents)}</td>
 <td class="small">${Object.keys(o.buyer).length ? Object.entries(o.buyer).map(([k, v]) => html`<div><span class="muted">${FIELD_LABELS[k] ?? k}:</span> ${v}</div>`) : html`<span class="muted">—</span>`}</td>

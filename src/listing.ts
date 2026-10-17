@@ -95,7 +95,11 @@ export async function validateListing(
     errors.push("Add a webhook URL or an email so you hear about orders.");
   }
 
-  const kind: ProductKind = input.kind === "digital" ? "digital" : "physical";
+  // Anything to deliver digitally (a file, a link or content) makes it a digital product, even if the
+  // seller left the delivery radio on its default; otherwise the buyer would never get a download link.
+  const hasDigitalContent =
+    Boolean(input.digital_file && input.digital_file.size > 0) || Boolean(t(input.delivery_url)) || Boolean(t(input.delivery_text));
+  const kind: ProductKind = input.kind === "digital" || hasDigitalContent ? "digital" : "physical";
   const delivery_url = t(input.delivery_url) ? httpsUrl(t(input.delivery_url)) : null;
   if (t(input.delivery_url) && !delivery_url) errors.push("Digital file URL must be an https:// link.");
   const delivery_text = t(input.delivery_text) || null;

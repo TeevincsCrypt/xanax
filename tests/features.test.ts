@@ -189,3 +189,17 @@ describe("accounts", () => {
     expect((await req("/account", { headers: { cookie } })).status).toBe(302);
   });
 });
+
+describe("digital delivery safety net", () => {
+  it("treats a listing with content to deliver as digital even if the radio was left on physical", async () => {
+    const res = await req("/sell", { method: "POST", body: sellForm({ kind: "physical", delivery_text: "the goods" }) });
+    expect(res.status).toBe(201);
+    const product = products.search("Photo pack")[0]!;
+    expect(product.kind).toBe("digital");
+    const r = await (await pay(`https://xanax.test/buy/${product.id}`, { method: "POST" })).json();
+    expect(r.delivery.download_url).toBeTruthy();
+    const cookie = await login("tee", "tee@example.com");
+    merchants.claim(product.merchant_id, "did:privy:tee");
+    expect(await (await req(`/account/stores/${product.merchant_id}`, { headers: { cookie } })).text()).toContain("Copy download link");
+  });
+});

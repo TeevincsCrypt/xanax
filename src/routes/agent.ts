@@ -186,6 +186,25 @@ function isAdmin(auth: string | undefined): boolean {
   return Boolean(config.ADMIN_TOKEN) && safeEqual(auth ?? "", `Bearer ${config.ADMIN_TOKEN}`);
 }
 
+// Send a test email through Resend and report exactly what Resend said.
+agent.post("/admin/test-email", async (c) => {
+  if (!isAdmin(c.req.header("authorization"))) return c.json({ error: "unauthorized" }, 401);
+  const to = c.req.query("to");
+  if (!to) return c.json({ error: "add ?to=you@example.com" }, 400);
+  if (!config.emailEnabled) return c.json({ error: "Email is off: set RESEND_API_KEY and EMAIL_FROM" }, 400);
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      signal: AbortSignal.timeout(10_000),
+      headers: { authorization: `Bearer ${config.RESEND_API_KEY}`, "content-type": "application/json" },
+      body: JSON.stringify({ from: config.EMAIL_FROM, to: [to], subject: `${APP_NAME} test email`, text: `Email works. Receipts from ${config.BASE_URL} will arrive like this.` }),
+    });
+    return c.json({ ok: res.ok, status: res.status, from: config.EMAIL_FROM, resend: await res.json().catch(() => null) }, res.ok ? 200 : 502);
+  } catch (err) {
+    return c.json({ ok: false, error: err instanceof Error ? err.message : "request failed" }, 502);
+  }
+});
+
 agent.post("/admin/unseed", (c) => {
   if (!isAdmin(c.req.header("authorization"))) return c.json({ error: "unauthorized" }, 401);
   return c.json(unseedDemo());

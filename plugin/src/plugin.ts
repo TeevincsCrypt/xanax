@@ -6,12 +6,12 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import * as z from "zod/v4";
 
-import { BUYER_FIELDS, getProduct, searchProducts, XanaxError, type Product } from "./xanax.js";
+import { BASE_URL, BUYER_FIELDS, getProduct, searchProducts, XanaxError, type Product } from "./xanax.js";
 import { proposeX402, usdcAtomic, x402OutputSchema } from "./paybox.js";
 
 const PROTOCOL_VERSION = "2026-07-28";
 const NAME = "xanax";
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
 
 const productId = z.string().trim().regex(/^[A-Za-z0-9_-]{1,64}$/, "Use the product id from search_products, for example \"p_ab12cd34\".");
 const usd = z.string().trim().regex(/^(0|[1-9][0-9]{0,5})(\.[0-9]{1,2})?$/, "Use a plain USD amount such as \"5\" or \"12.50\".");
@@ -58,6 +58,9 @@ function failure(err: unknown) {
   return errorResult(`Xanax could not complete this request: ${message}`);
 }
 
+const SELL_LINE = `Sell your own products to AI agents: ${BASE_URL}/sell`;
+const FIND_LINE = `Lost the receipt or download? Recover it any time at ${BASE_URL}/find with the order ID and the email or wallet used to pay.`;
+
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
 
 function registerSearch(server: McpServer) {
@@ -74,8 +77,8 @@ function registerSearch(server: McpServer) {
     try {
       const found = (await searchProducts(query)).slice(0, max_results ?? 10);
       const text = found.length
-        ? `${found.length} product${found.length === 1 ? "" : "s"} on Xanax:\n${found.map(line).join("\n")}\nTo buy one, call buy_product with its id.`
-        : `No products on Xanax match "${query}". Try fewer keywords, or an empty query to list everything.`;
+        ? `${found.length} product${found.length === 1 ? "" : "s"} on Xanax:\n${found.map(line).join("\n")}\nTo buy one, call buy_product with its id.\n${SELL_LINE}`
+        : `No products on Xanax match "${query}". Try fewer keywords, or an empty query to list everything.\n${SELL_LINE}`;
       return { content: [{ type: "text" as const, text }], structuredContent: { count: found.length, products: found.map(summary) } };
     } catch (err) {
       return failure(err);
@@ -158,11 +161,35 @@ function registerBuy(server: McpServer) {
         ...(Object.keys(sent).length ? { body: { buyer: sent } } : {}),
         maxAmount: total.toString(),
       });
-      const text = `Ready to pay $${formatUsdc(total)} USDC on Base to ${p.merchant} for ${quantity} x ${p.name}. PayBox will ask the user to approve; the USDC goes straight to the merchant's wallet. After payment, relay the receipt: order ID, transaction link, receipt PDF${p.type === "digital" ? " and the download link" : ""}.`;
+      const text = `Ready to pay $${formatUsdc(total)} USDC on Base to ${p.merchant} for ${quantity} x ${p.name}. PayBox will ask the user to approve; the USDC goes straight to the merchant's wallet. After payment, relay the receipt: order ID, transaction link, receipt PDF${p.type === "digital" ? " and the download link" : ""}. ${FIND_LINE}`;
       return { ...proposal, content: [{ type: "text" as const, text }] };
     } catch (err) {
       return failure(err);
     }
+  });
+}
+
+function registerAbout(server: McpServer) {
+  server.registerTool("about_xanax", {
+    title: "About Xanax",
+    description: "What Xanax is, how buying works, how to start selling to AI agents, and how to recover a lost receipt or download. Use when the user asks what Xanax is, how to sell on it, or about a past order. No network access.",
+    inputSchema: z.object({}).strict(),
+    outputSchema: z.object({ website: z.string(), sell_url: z.string(), marketplace_url: z.string(), find_order_url: z.string() }).strict(),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async () => {
+    const text = [
+      "Xanax is agent checkout for small businesses. Merchants list products; AI agents buy them with USDC on Base through PayBox, paid straight to the merchant's wallet. Xanax never holds the money and takes no fee.",
+      "",
+      "Buying: search_products, then buy_product. The user approves the payment in PayBox and gets an order ID, transaction link, PDF receipt and, for digital products, an instant download link. No Xanax account needed.",
+      "",
+      `Selling: sign in at ${BASE_URL}/sell, fill one form (product, price, image or file, Base wallet) and get a shareable link plus a ready-made prompt for buyers. Listings also appear here in search_products and in the marketplace for Xanax account holders at ${BASE_URL}/market. Sales, receipts and orders live in the seller's account at ${BASE_URL}/account.`,
+      "",
+      FIND_LINE,
+    ].join("\n");
+    return {
+      content: [{ type: "text" as const, text }],
+      structuredContent: { website: BASE_URL, sell_url: `${BASE_URL}/sell`, marketplace_url: `${BASE_URL}/market`, find_order_url: `${BASE_URL}/find` },
+    };
   });
 }
 
@@ -177,6 +204,7 @@ function createServer() {
   registerSearch(server);
   registerGet(server);
   registerBuy(server);
+  registerAbout(server);
   return server;
 }
 

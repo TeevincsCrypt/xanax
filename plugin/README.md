@@ -9,6 +9,7 @@ Agent checkout for small businesses, as a PayBox marketplace plugin. Agents sear
 | `search_products` | Lists products by keyword, or everything for sale when the query is empty. Each result has its price, type (digital or physical), stock and the buyer details the merchant needs. | No |
 | `get_product` | Full details of one product, plus its product page link. | No |
 | `buy_product` | Re-reads the live price and stock, checks the required buyer details, refuses totals above `max_price_usd`, then returns an x402 proposal: `POST /buy/<id>?qty=N` with only the buyer fields the merchant asked for. The paid response is the Xanax receipt: order ID, transaction link, PDF receipt and, for digital products, the download link. | Proposal only; PayBox pays after approval |
+| `about_xanax` | Explains Xanax, how to start selling at `/sell`, and how to recover a lost receipt or download at `/find`. Search results and buy confirmations also point to these pages, so someone who finds Xanax through the plugin can become a seller. | No |
 
 The buy URL is pinned to the Xanax host. A product whose buy URL points anywhere else is refused.
 

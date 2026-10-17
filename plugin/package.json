@@ -1,6 +1,6 @@
 {
   "name": "xanax-paybox-plugin",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "Xanax agent checkout as a PayBox plugin: search small-business products and buy them with USDC on Base over x402.",

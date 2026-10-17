@@ -41,7 +41,8 @@ const EnvSchema = z.object({
 });
 
 function blankToUndefined(env: NodeJS.ProcessEnv): Record<string, string | undefined> {
-  return Object.fromEntries(Object.entries(env).map(([k, v]) => [k, v === "" ? undefined : v]));
+  // Trim: a stray space or newline pasted into a dashboard silently breaks token comparisons.
+  return Object.fromEntries(Object.entries(env).map(([k, v]) => [k, v?.trim() === "" ? undefined : v?.trim()]));
 }
 
 const env = EnvSchema.parse(blankToUndefined(process.env));

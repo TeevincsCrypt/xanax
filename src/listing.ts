@@ -3,6 +3,7 @@ import { config } from "./config.js";
 import { parseUsdToCents } from "./catalog.js";
 import { BUYER_FIELDS, merchants, products, type BuyerField, type Merchant, type Product, type ProductKind } from "./db.js";
 import { checkWebhookUrl, randomId, randomSecret, sha256Hex } from "./security.js";
+import { imageUrl, MAX_FILE_BYTES, MAX_IMAGE_BYTES, saveUpload, sniffImage } from "./uploads.js";
 
 export interface ListingInput {
   business_name?: string;
@@ -18,6 +19,12 @@ export interface ListingInput {
   delivery_text?: string;
   stock?: string;
   required_fields?: string[];
+  /** Uploaded product image; wins over image_url. */
+  image_file?: File;
+  /** Uploaded digital good, delivered through the signed download link. */
+  digital_file?: File;
+  /** Privy user who owns this store, when created while signed in. */
+  user_id?: string;
 }
 
 export interface Listing {
@@ -93,7 +100,13 @@ export async function validateListing(
   if (t(input.delivery_url) && !delivery_url) errors.push("Digital file URL must be an https:// link.");
   const delivery_text = t(input.delivery_text) || null;
   if (delivery_text && delivery_text.length > 20_000) errors.push("Digital content is too long (max 20,000 characters).");
-  if (kind === "digital" && !delivery_url && !delivery_text) errors.push("Digital products need a file URL or content to deliver.");
+  const hasFile = Boolean(input.digital_file && input.digital_file.size > 0);
+  if (kind === "digital" && !delivery_url && !delivery_text && !hasFile) errors.push("Digital products need a file, a file link or some content to deliver.");
+  if (hasFile && input.digital_file!.size > MAX_FILE_BYTES) errors.push(`Digital file is too large (max ${MAX_FILE_BYTES / 1024 / 1024} MB).`);
+  if (input.image_file && input.image_file.size > 0) {
+    if (input.image_file.size > MAX_IMAGE_BYTES) errors.push(`Image is too large (max ${MAX_IMAGE_BYTES / 1024 / 1024} MB).`);
+    else if (!sniffImage(new Uint8Array(await input.image_file.slice(0, 16).arrayBuffer()))) errors.push("Image must be a PNG, JPG, GIF or WebP.");
+  }
 
   let stock: number | null = null;
   if (t(input.stock)) {
@@ -130,6 +143,17 @@ export async function createListing(input: ListingInput, opts: { skipWebhookDnsC
   const v = await validateListing(input, opts);
   if (!v.ok) return v;
   const { business_name, payout_address, webhook_url, email, ...p } = v.value;
+  let delivery_file_id: string | null = null;
+  if (input.image_file && input.image_file.size > 0) {
+    const up = await saveUpload(input.image_file, "image");
+    if (!up.ok) return { ok: false, errors: [up.error] };
+    p.image_url = imageUrl(up.file.id);
+  }
+  if (p.kind === "digital" && input.digital_file && input.digital_file.size > 0) {
+    const up = await saveUpload(input.digital_file, "digital");
+    if (!up.ok) return { ok: false, errors: [up.error] };
+    delivery_file_id = up.file.id;
+  }
   const dashboardToken = randomSecret(32);
   const webhookSecret = `whsec_${randomSecret(24)}`;
   const merchantId = randomId("m");
@@ -142,8 +166,9 @@ export async function createListing(input: ListingInput, opts: { skipWebhookDnsC
     webhook_secret: webhookSecret,
     email,
     dashboard_token_hash: sha256Hex(dashboardToken),
+    user_id: input.user_id ?? null,
   });
-  products.insert({ id: productId, merchant_id: merchantId, ...p });
+  products.insert({ id: productId, merchant_id: merchantId, ...p, delivery_file_id });
   return { ok: true, listing: { merchant: merchants.get(merchantId)!, product: products.get(productId)!, dashboardToken, webhookSecret } };
 }
 

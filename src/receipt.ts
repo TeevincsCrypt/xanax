@@ -33,9 +33,10 @@ export function receiptJson(order: Order, product: Product, merchant: Merchant, 
   }
 
   const amount = formatUsd(order.amount_cents);
+  const receiptPdf = `${config.BASE_URL}/r/${order.id}.pdf`;
   const message = delivery
-    ? `Payment received: $${amount} USDC to ${name}. Order ${order.id}: ${order.quantity} x ${product.name}. Download it here: ${delivery.download_url}`
-    : `Payment received: $${amount} USDC to ${name}. Order ${order.id}: ${order.quantity} x ${product.name}. ${nextSteps} Receipt: ${config.BASE_URL}/r/${order.id}`;
+    ? `Payment received: $${amount} USDC to ${name}. Order ${order.id}: ${order.quantity} x ${product.name}. Download it here: ${delivery.download_url} . Receipt (PDF): ${receiptPdf}`
+    : `Payment received: $${amount} USDC to ${name}. Order ${order.id}: ${order.quantity} x ${product.name}. ${nextSteps} Receipt (PDF): ${receiptPdf}`;
 
   return {
     // One sentence an agent can relay verbatim; the structured fields follow.
@@ -53,6 +54,7 @@ export function receiptJson(order: Order, product: Product, merchant: Merchant, 
     merchant_notified: merchantNotified,
     next_steps: nextSteps,
     receipt_url: `${config.BASE_URL}/r/${order.id}`,
+    receipt_pdf_url: receiptPdf,
     ...(delivery ? { delivery } : {}),
   };
 }

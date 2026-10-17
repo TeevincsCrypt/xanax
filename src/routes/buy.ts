@@ -4,7 +4,7 @@ import { getFacilitatorResponseError } from "@x402/core/server";
 import { APP_NAME, config } from "../config.js";
 import { parseQty, totalCents, validateBuyer } from "../catalog.js";
 import { merchants, orders, products, type Order } from "../db.js";
-import { notifyMerchant } from "../notify.js";
+import { notifyMerchant, sendBuyerReceipt } from "../notify.js";
 import { receiptJson, wasNotified } from "../receipt.js";
 import { randomId } from "../security.js";
 import { ensureInitialized, httpServer, paymentNonce, readPaymentHeader, XanaxAdapter } from "../x402.js";
@@ -170,7 +170,10 @@ async function handleBuy(c: Context) {
   const notified = await notifyMerchant(saved, product, merchant).catch(() => false);
 
   for (const [k, v] of Object.entries(settle.headers)) c.header(k, v);
-  return c.json(receiptJson(saved, product, merchant, notified), 200);
+  const receipt = receiptJson(saved, product, merchant, notified);
+  // Buyer's emailed receipt (if they gave an email and Resend is set up); never blocks the response.
+  void sendBuyerReceipt(saved, product, merchant, receipt.delivery?.download_url).catch(() => undefined);
+  return c.json(receipt, 200);
 }
 
 buy.get("/buy/:id", handleBuy);

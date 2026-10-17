@@ -5,24 +5,47 @@ import { agent } from "./routes/agent.js";
 import { buy } from "./routes/buy.js";
 import { merchant } from "./routes/merchant.js";
 import { messagePage } from "./views/pages.js";
+import { LOGO_SVG } from "./views/layout.js";
+import { serveStatic } from "@hono/node-server/serve-static";
 
 export function createApp() {
   const app = new Hono();
-  app.use(
-    "*",
-    secureHeaders({
-      contentSecurityPolicy: {
-        defaultSrc: ["'self'"],
-        imgSrc: ["'self'", "https:", "data:"],
-        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        scriptSrc: ["'self'", "'unsafe-inline'"],
-        frameAncestors: ["'none'"],
-      },
-      crossOriginResourcePolicy: false,
-    }),
+  const csp = {
+    defaultSrc: ["'self'"],
+    imgSrc: ["'self'", "https:", "data:"],
+    styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+    fontSrc: ["'self'", "https://fonts.gstatic.com"],
+    scriptSrc: ["'self'", "'unsafe-inline'"],
+    frameAncestors: ["'none'"],
+  };
+  const strict = secureHeaders({ contentSecurityPolicy: csp, crossOriginResourcePolicy: false });
+  // Privy's login modal talks to auth.privy.io, wallet relays (wss) and embeds its own iframes.
+  const privy = secureHeaders({
+    contentSecurityPolicy: {
+      ...csp,
+      imgSrc: ["'self'", "https:", "data:", "blob:"],
+      connectSrc: ["'self'", "https:", "wss:"],
+      frameSrc: ["https://auth.privy.io", "https://verify.walletconnect.com", "https://verify.walletconnect.org", "https://*.privy.io"],
+      childSrc: ["https://auth.privy.io", "https://verify.walletconnect.com", "https://verify.walletconnect.org"],
+      workerSrc: ["'self'", "blob:"],
+    },
+    crossOriginResourcePolicy: false,
+    crossOriginOpenerPolicy: "same-origin-allow-popups",
+  });
+  app.use("*", (c, next) => (c.req.path === "/login" || c.req.path === "/logout" ? privy(c, next) : strict(c, next)));
+  // Listings can carry an image (5 MB) and a digital file (25 MB); everything else stays small.
+  app.use("*", (c, next) =>
+    bodyLimit({
+      maxSize: c.req.path === "/sell" ? 32 * 1024 * 1024 : 64 * 1024,
+      onError: (cc) => (cc.req.path === "/sell" ? cc.html(messagePage("Too large", "Your upload is over the size limit (image 5 MB, file 25 MB)."), 413) : cc.json({ error: "Request body too large" }, 413)),
+    })(c, next),
   );
-  app.use("*", bodyLimit({ maxSize: 64 * 1024, onError: (c) => c.json({ error: "Request body too large" }, 413) }));
+  app.use("/js/*", serveStatic({ root: "./public" }));
+  app.get("/logo.svg", (c) => {
+    c.header("Content-Type", "image/svg+xml");
+    c.header("Cache-Control", "public, max-age=86400");
+    return c.body(LOGO_SVG);
+  });
   // x402 response headers must be readable by browser-based agents.
   app.use("/buy/*", async (c, next) => {
     await next();

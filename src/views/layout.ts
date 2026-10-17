@@ -55,6 +55,10 @@ tr:last-child td{border-bottom:0}.tablewrap{overflow-x:auto}
 .big{font-size:46px;font-weight:800;letter-spacing:-.04em;line-height:1.1}
 .kv{display:grid;grid-template-columns:140px 1fr;gap:10px 14px;font-size:15px}.kv dt{color:var(--muted)}.kv dd{margin:0;word-break:break-all}
 @media (max-width:520px){.kv{grid-template-columns:1fr}.kv dt{margin-top:6px}}
+.receipt{max-width:640px;margin:16px auto;background:#fff;border:1px solid var(--line);border-radius:24px;padding:clamp(20px,4vw,36px);box-shadow:0 30px 60px -30px rgba(16,26,138,.25)}
+.receipt-top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px}
+.receipt-amount{font-size:clamp(44px,7vw,64px);font-weight:800;letter-spacing:-.04em;line-height:1}.receipt-amount span{font-size:20px;color:var(--muted);letter-spacing:0}
+.receipt-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}
 .page-head{padding:12px 0 8px}.page-head h1{font-size:clamp(32px,5vw,52px)}
 footer.foot{margin-top:72px;padding:28px clamp(16px,4vw,44px);border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:12px 24px;justify-content:space-between;color:var(--muted);font-size:14px}
 
@@ -121,7 +125,7 @@ ${opts.noindex ? raw('<meta name="robots" content="noindex">') : ""}
 </head><body>
 <div class="frame">
 <header class="top"><a class="brand" href="/">${raw(LOGO_SVG)}${APP_NAME}</a>
-<nav class="pills"><a class="hide-sm" href="/#how">How it works</a><a class="hide-sm" href="/#agents">For agents</a><a class="hide-sm" href="/#products">Products</a><a class="cta" href="/sell">Start selling</a></nav></header>
+<nav class="pills"><a class="hide-sm" href="/#how">How it works</a><a class="hide-sm" href="/#agents">For agents</a><a class="hide-sm" href="/#products">Products</a><a href="/account">Account</a><a class="cta" href="/sell">Start selling</a></nav></header>
 <main class="wrap">
 ${body}
 </main>

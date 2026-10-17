@@ -16,6 +16,7 @@ export interface Merchant {
   webhook_secret: string;
   email: string | null;
   dashboard_token_hash: string;
+  user_id?: string | null;
   created_at: string;
 }
 
@@ -31,6 +32,7 @@ export interface Product {
   stock: number | null;
   delivery_text: string | null;
   delivery_url: string | null;
+  delivery_file_id?: string | null;
   active: number;
   created_at: string;
 }
@@ -105,6 +107,26 @@ CREATE TABLE IF NOT EXISTS orders (
   fulfilled_at TEXT
 );
 CREATE INDEX IF NOT EXISTS orders_merchant ON orders(merchant_id, created_at);
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  email TEXT,
+  wallet TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  last_login_at TEXT
+);
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  expires_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS files (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  mime TEXT NOT NULL,
+  filename TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
 `;
 
 function resolvePath(url: string): string {
@@ -119,8 +141,14 @@ export function openDb(url = config.DATABASE_URL): DatabaseSync {
   db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
   db.exec(SCHEMA);
   // Additive migrations for databases created by earlier versions.
-  const cols = (db.prepare("PRAGMA table_info(orders)").all() as Array<{ name: string }>).map((c) => c.name);
-  if (!cols.includes("downloaded_at")) db.exec("ALTER TABLE orders ADD COLUMN downloaded_at TEXT");
+  const addColumn = (table: string, column: string, type: string) => {
+    const cols = (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((c) => c.name);
+    if (!cols.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+  };
+  addColumn("orders", "downloaded_at", "TEXT");
+  addColumn("merchants", "user_id", "TEXT");
+  addColumn("products", "delivery_file_id", "TEXT");
+  db.exec("CREATE INDEX IF NOT EXISTS merchants_user ON merchants(user_id)");
   return db;
 }
 
@@ -153,10 +181,18 @@ export const merchants = {
   insert(m: Omit<Merchant, "created_at">): void {
     db()
       .prepare(
-        `INSERT INTO merchants (id, business_name, payout_address, webhook_url, webhook_secret, email, dashboard_token_hash)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO merchants (id, business_name, payout_address, webhook_url, webhook_secret, email, dashboard_token_hash, user_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(m.id, m.business_name, m.payout_address, m.webhook_url, m.webhook_secret, m.email, m.dashboard_token_hash);
+      .run(m.id, m.business_name, m.payout_address, m.webhook_url, m.webhook_secret, m.email, m.dashboard_token_hash, m.user_id ?? null);
+  },
+  byUser(userId: string): Merchant[] {
+    return db().prepare("SELECT * FROM merchants WHERE user_id = ? ORDER BY created_at DESC").all(userId) as unknown as Merchant[];
+  },
+  /** Attach an unowned store to a user. Returns false if someone already owns it. */
+  claim(id: string, userId: string): boolean {
+    const res = db().prepare("UPDATE merchants SET user_id = ? WHERE id = ? AND (user_id IS NULL OR user_id = ?)").run(userId, id, userId);
+    return Number(res.changes) === 1;
   },
   get(id: string): Merchant | undefined {
     return db().prepare("SELECT * FROM merchants WHERE id = ?").get(id) as Merchant | undefined;
@@ -170,8 +206,8 @@ export const products = {
   insert(p: Omit<Product, "created_at" | "active">): void {
     db()
       .prepare(
-        `INSERT INTO products (id, merchant_id, name, description, price_cents, image_url, kind, required_fields, stock, delivery_text, delivery_url)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO products (id, merchant_id, name, description, price_cents, image_url, kind, required_fields, stock, delivery_text, delivery_url, delivery_file_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         p.id,
@@ -185,7 +221,12 @@ export const products = {
         p.stock,
         p.delivery_text,
         p.delivery_url,
+        p.delivery_file_id ?? null,
       );
+  },
+  /** Any product, including ones taken off sale (for receipts and order history). */
+  getAny(id: string): Product | undefined {
+    return toProduct(db().prepare("SELECT * FROM products WHERE id = ?").get(id) as Row | undefined);
   },
   get(id: string): Product | undefined {
     return toProduct(db().prepare("SELECT * FROM products WHERE id = ? AND active = 1").get(id) as Row | undefined);
@@ -282,6 +323,30 @@ export const orders = {
       db().prepare("SELECT * FROM orders WHERE merchant_id = ? ORDER BY created_at DESC LIMIT ?").all(merchantId, limit) as Row[]
     ).map((r) => toOrder(r)!);
   },
+  forMerchants(merchantIds: string[], limit = 200): Order[] {
+    if (merchantIds.length === 0) return [];
+    const q = merchantIds.map(() => "?").join(",");
+    return (
+      db().prepare(`SELECT * FROM orders WHERE merchant_id IN (${q}) ORDER BY created_at DESC LIMIT ?`).all(...merchantIds, limit) as Row[]
+    ).map((r) => toOrder(r)!);
+  },
+  /** Orders a user made as a buyer: matched on the buyer email they gave, or a wallet they own. */
+  purchasesBy(email: string | null, wallets: string[], limit = 200): Order[] {
+    const clauses: string[] = [];
+    const args: Array<string | number> = [];
+    if (email) {
+      clauses.push("lower(json_extract(buyer_json, '$.email')) = ?");
+      args.push(email.toLowerCase());
+    }
+    for (const w of wallets) {
+      clauses.push("lower(payer_address) = ?");
+      args.push(w.toLowerCase());
+    }
+    if (clauses.length === 0) return [];
+    return (
+      db().prepare(`SELECT * FROM orders WHERE ${clauses.join(" OR ")} ORDER BY created_at DESC LIMIT ?`).all(...args, limit) as Row[]
+    ).map((r) => toOrder(r)!);
+  },
   recordWebhook(id: string, status: Order["webhook_status"], attempts: number, error: string | null): void {
     db()
       .prepare("UPDATE orders SET webhook_status = ?, webhook_attempts = ?, webhook_last_error = ? WHERE id = ?")
@@ -307,5 +372,65 @@ export const orders = {
       )
       .run(id, merchantId);
     return Number(res.changes) === 1;
+  },
+};
+
+export interface User {
+  id: string;
+  email: string | null;
+  wallet: string | null;
+  created_at: string;
+  last_login_at: string | null;
+}
+
+export const users = {
+  upsert(u: { id: string; email: string | null; wallet: string | null }): User {
+    db()
+      .prepare(
+        `INSERT INTO users (id, email, wallet, last_login_at) VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+         ON CONFLICT(id) DO UPDATE SET email = COALESCE(excluded.email, users.email), wallet = COALESCE(excluded.wallet, users.wallet),
+         last_login_at = excluded.last_login_at`,
+      )
+      .run(u.id, u.email, u.wallet);
+    return users.get(u.id)!;
+  },
+  get(id: string): User | undefined {
+    return db().prepare("SELECT * FROM users WHERE id = ?").get(id) as User | undefined;
+  },
+};
+
+export const sessions = {
+  create(tokenHash: string, userId: string, ttlDays = 30): void {
+    db()
+      .prepare(`INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now', '+${ttlDays} days'))`)
+      .run(tokenHash, userId);
+  },
+  user(tokenHash: string): User | undefined {
+    return db()
+      .prepare(
+        "SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > strftime('%Y-%m-%dT%H:%M:%fZ','now')",
+      )
+      .get(tokenHash) as User | undefined;
+  },
+  delete(tokenHash: string): void {
+    db().prepare("DELETE FROM sessions WHERE token_hash = ?").run(tokenHash);
+  },
+};
+
+export interface StoredFile {
+  id: string;
+  kind: "image" | "digital";
+  mime: string;
+  filename: string;
+  size: number;
+  created_at: string;
+}
+
+export const files = {
+  insert(f: Omit<StoredFile, "created_at">): void {
+    db().prepare("INSERT INTO files (id, kind, mime, filename, size) VALUES (?, ?, ?, ?, ?)").run(f.id, f.kind, f.mime, f.filename, f.size);
+  },
+  get(id: string): StoredFile | undefined {
+    return db().prepare("SELECT * FROM files WHERE id = ?").get(id) as StoredFile | undefined;
   },
 };

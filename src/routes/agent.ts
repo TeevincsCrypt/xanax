@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { APP_NAME, config } from "../config.js";
 import { buyUrl, productJson } from "../catalog.js";
 import { merchants, orders, products } from "../db.js";
@@ -6,6 +6,8 @@ import { safeEqual, verifyDownload } from "../security.js";
 import { clientIp, limitApi } from "../limits.js";
 import { seedDemo, unseedDemo } from "../seed.js";
 import { downloadPage, messagePage, receiptPage } from "../views/pages.js";
+import { receiptPdf } from "../pdf.js";
+import { readUpload } from "../uploads.js";
 import { RECEIPT_EXAMPLE } from "../x402.js";
 
 export const agent = new Hono();
@@ -33,33 +35,75 @@ agent.get("/api/products/:id", (c) => {
   return c.json(productJson(p, merchants.get(p.merchant_id)!.business_name));
 });
 
-agent.get("/r/:orderId", (c) => {
-  const order = orders.get(c.req.param("orderId"));
+// Public receipt (HTML or PDF): order details, no buyer PII. `/r/<id>.pdf` is the buyer's downloadable copy.
+agent.get("/r/:orderId", async (c) => {
+  const raw = c.req.param("orderId");
+  const isPdf = raw.endsWith(".pdf");
+  const order = orders.get(isPdf ? raw.slice(0, -4) : raw);
   if (!order) return c.html(messagePage("Not found", "No receipt with that ID."), 404);
-  const product = products.byMerchant(order.merchant_id).find((p) => p.id === order.product_id)!;
+  const product = products.getAny(order.product_id)!;
   const merchant = merchants.get(order.merchant_id)!;
-  return c.html(receiptPage(order, product, merchant));
+  if (!isPdf) return c.html(receiptPage(order, product, merchant));
+  const pdf = await receiptPdf({ order, product, merchant, copy: "buyer" });
+  c.header("Content-Type", "application/pdf");
+  c.header("Content-Disposition", `attachment; filename="receipt-${order.id}.pdf"`);
+  c.header("Cache-Control", "private, max-age=60");
+  return c.body(new Uint8Array(pdf));
 });
 
-agent.get("/d/:orderId", (c) => {
-  const id = c.req.param("orderId");
+// Uploaded product images (public).
+agent.get("/u/:id", (c) => {
+  const f = readUpload(c.req.param("id"));
+  if (!f || f.meta.kind !== "image") return c.text("Not found", 404);
+  c.header("Content-Type", f.meta.mime);
+  c.header("Cache-Control", "public, max-age=31536000, immutable");
+  c.header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+  return c.body(new Uint8Array(f.data));
+});
+
+function paidDownload(c: Context) {
+  const id = c.req.param("orderId") ?? "";
   const token = c.req.query("t") ?? "";
   const order = orders.get(id);
-  if (!order || !verifyDownload(id, token)) {
-    return c.html(messagePage("Link expired", "This download link is invalid or has expired. Contact the merchant with your order ID."), 403);
-  }
-  const product = products.byMerchant(order.merchant_id).find((p) => p.id === order.product_id)!;
-  if (product.kind !== "digital") return c.html(messagePage("Not found", "Nothing to download for this order."), 404);
+  if (!order || !verifyDownload(id, token)) return undefined;
+  const product = products.getAny(order.product_id);
+  if (!product || product.kind !== "digital") return undefined;
+  return { id, token, order, product };
+}
+
+agent.get("/d/:orderId", (c) => {
+  const d = paidDownload(c);
+  if (!d) return c.html(messagePage("Link expired", "This download link is invalid or has expired. Contact the merchant with your order ID."), 403);
+  const { id, token, order, product } = d;
   c.header("Cache-Control", "private, no-store");
   c.header("Referrer-Policy", "no-referrer");
   orders.markDownloaded(id);
-  if (product.delivery_url && !product.delivery_text) return c.redirect(product.delivery_url, 302);
+  if (product.delivery_url && !product.delivery_text && !product.delivery_file_id) return c.redirect(product.delivery_url, 302);
   if (c.req.query("format") === "txt") {
     c.header("Content-Disposition", `attachment; filename="${product.id}.txt"`);
     return c.text(product.delivery_text ?? "");
   }
-  const merchant = merchants.get(order.merchant_id)!;
-  return c.html(downloadPage(order, product, merchant, `/d/${id}?t=${encodeURIComponent(token)}&format=txt`));
+  const t = encodeURIComponent(token);
+  const upload = product.delivery_file_id ? readUpload(product.delivery_file_id)?.meta : undefined;
+  return c.html(
+    downloadPage(order, product, merchants.get(order.merchant_id)!, {
+      txt: product.delivery_text ? `/d/${id}?t=${t}&format=txt` : undefined,
+      file: upload ? { url: `/d/${id}/file?t=${t}`, name: upload.filename, size: upload.size } : undefined,
+    }),
+  );
+});
+
+// The uploaded digital file itself, only via the signed link.
+agent.get("/d/:orderId/file", (c) => {
+  const d = paidDownload(c);
+  if (!d) return c.html(messagePage("Link expired", "This download link is invalid or has expired."), 403);
+  const f = d.product.delivery_file_id ? readUpload(d.product.delivery_file_id) : undefined;
+  if (!f) return c.html(messagePage("Not found", "The merchant's file is missing. Contact them with your order ID."), 404);
+  orders.markDownloaded(d.id);
+  c.header("Content-Type", f.meta.mime);
+  c.header("Content-Disposition", `attachment; filename="${f.meta.filename.replace(/"/g, "")}"`);
+  c.header("Cache-Control", "private, no-store");
+  return c.body(new Uint8Array(f.data));
 });
 
 agent.get("/llms.txt", (c) => {

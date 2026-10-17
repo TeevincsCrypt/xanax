@@ -35,6 +35,8 @@ const EnvSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().optional(),
   ADMIN_TOKEN: z.string().optional(),
+  PRIVY_APP_ID: z.string().optional(),
+  PRIVY_APP_SECRET: z.string().optional(),
   SIGNING_SECRET: z.string().optional(),
   MAX_PRICE_USD: z.coerce.number().positive().default(500),
   MAX_QTY: z.coerce.number().int().positive().default(10),
@@ -71,6 +73,7 @@ export const config = {
     env.ADMIN_TOKEN ||
     Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("hex"),
   emailEnabled: Boolean(env.RESEND_API_KEY && env.EMAIL_FROM),
+  authEnabled: Boolean(env.PRIVY_APP_ID),
 };
 
 /** Explorer link for a tx on the network it was paid on (old testnet orders keep testnet links). */

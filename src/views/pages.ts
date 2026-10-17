@@ -166,7 +166,7 @@ export function sellPage(values: SellValues = {}, errors: string[] = []): string
 <h1 style="font-size:clamp(28px,5vw,40px)">Sell to AI agents</h1>
 <p class="lead">Takes about two minutes. You'll get an agent link, a dashboard, and a signing secret for your webhook.</p>
 ${errors.length ? html`<div class="alert bad"><b>Please fix:</b><ul style="margin:6px 0 0">${errors.map((e) => html`<li>${e}</li>`)}</ul></div>` : ""}
-<form class="card" method="post" action="/sell" style="margin-top:18px">
+<form class="card" method="post" action="/sell" enctype="multipart/form-data" style="margin-top:18px">
   <div class="row">
     <div><label for="business_name">Business name</label><input id="business_name" name="business_name" required maxlength="80" value="${values.business_name ?? ""}" placeholder="Ada's Roastery"></div>
     <div><label for="product_name">Product name</label><input id="product_name" name="product_name" required maxlength="120" value="${values.product_name ?? ""}" placeholder="Single-origin coffee, 250g"></div>
@@ -178,7 +178,10 @@ ${errors.length ? html`<div class="alert bad"><b>Please fix:</b><ul style="margi
     <div><label for="price_usd">Price (USD, paid in USDC)</label><input id="price_usd" name="price_usd" required inputmode="decimal" value="${values.price_usd ?? ""}" placeholder="12.00"><div class="hint">$0.01 to $${config.MAX_PRICE_USD}.</div></div>
     <div><label for="stock">Stock (optional)</label><input id="stock" name="stock" inputmode="numeric" value="${values.stock ?? ""}" placeholder="Unlimited"></div>
   </div>
-  <label for="image_url">Image URL (optional)</label><input id="image_url" name="image_url" type="url" value="${values.image_url ?? ""}" placeholder="https://…">
+  <div class="row">
+    <div><label for="image_file">Product image (optional)</label><input id="image_file" name="image_file" type="file" accept="image/png,image/jpeg,image/gif,image/webp"><div class="hint">PNG, JPG, GIF or WebP, up to 5 MB.</div></div>
+    <div><label for="image_url">…or image link</label><input id="image_url" name="image_url" type="url" value="${values.image_url ?? ""}" placeholder="https://…"></div>
+  </div>
   <label for="payout_address">Your Base wallet address</label>
   <input id="payout_address" name="payout_address" required class="mono" value="${values.payout_address ?? ""}" placeholder="0x…" autocomplete="off" spellcheck="false">
   <div class="hint">USDC on Base goes straight here. ${APP_NAME} never holds your money. Double-check it.</div>
@@ -201,7 +204,10 @@ ${errors.length ? html`<div class="alert bad"><b>Please fix:</b><ul style="margi
     <label><input type="radio" name="kind" value="physical" ${values.kind !== "digital" ? raw("checked") : ""}> I'll fulfil it myself (goods, services)</label>
     <label><input type="radio" name="kind" value="digital" ${values.kind === "digital" ? raw("checked") : ""}> Instant digital delivery</label>
   </div>
-  <label for="delivery_url">Digital: file URL (optional)</label><input id="delivery_url" name="delivery_url" type="url" value="${values.delivery_url ?? ""}" placeholder="https://… (we hand out a signed link that redirects here)">
+  <div class="row">
+    <div><label for="digital_file">Digital: upload the file</label><input id="digital_file" name="digital_file" type="file"><div class="hint">Any file up to 25 MB (PDF, ZIP, image, audio…). Buyers get it through a signed link that expires in 7 days.</div></div>
+    <div><label for="delivery_url">…or link to the file</label><input id="delivery_url" name="delivery_url" type="url" value="${values.delivery_url ?? ""}" placeholder="https://… (we redirect buyers here)"></div>
+  </div>
   <label for="delivery_text">Digital: content (optional)</label><textarea id="delivery_text" name="delivery_text" rows="3" maxlength="20000" placeholder="License key, guide, or any text the buyer gets right after paying.">${values.delivery_text ?? ""}</textarea>
 
   <p style="margin-top:24px"><button class="btn" type="submit">Create my agent link</button></p>
@@ -210,21 +216,25 @@ ${errors.length ? html`<div class="alert bad"><b>Please fix:</b><ul style="margi
   );
 }
 
-export function sellSuccessPage(args: { product: Product; merchant: Merchant; dashboardUrl: string; webhookSecret: string }): string {
-  const { product, merchant, dashboardUrl, webhookSecret } = args;
+export function sellSuccessPage(args: { product: Product; merchant: Merchant; dashboardUrl: string; webhookSecret: string; signedIn?: boolean }): string {
+  const { product, merchant, dashboardUrl, webhookSecret, signedIn } = args;
   return layout(
     `You're live · ${APP_NAME}`,
     html`
-<h1 style="font-size:clamp(28px,5vw,40px)">You're live. Agents can buy “${product.name}”.</h1>
-<div class="alert warn"><b>Save this page now.</b> Your dashboard link and webhook secret are shown only once; we store just a hash.</div>
+<div class="page-head"><h1>You're live. Agents can buy “${product.name}”.</h1></div>
+${
+  signedIn
+    ? html`<div class="alert ok">Saved to your account. Find this store, its orders and receipts any time under <a href="/account">Account</a>.</div>`
+    : html`<div class="alert warn"><b>Save this page now.</b> Your dashboard link and webhook secret are shown only once. <a href="/login?next=${encodeURIComponent(new URL(dashboardUrl).pathname)}">Sign in</a> to keep this store in an account instead.</div>`
+}
 <div class="card">
   <label>Agent product URL</label>${copyField("buyurl", buyUrl(product.id))}
   <div class="hint">x402-protected. $${formatUsd(product.price_cents)} per unit, paid in USDC to <span class="mono">${merchant.payout_address}</span>.</div>
   <label>Ready-to-paste prompt for a buyer (Claude, ChatGPT or Grok with PayBox)</label>${copyField("prompt", buyerPrompt(product, merchant.business_name), true)}
-  <label>Your private dashboard (save it!)</label>${copyField("dash", dashboardUrl)}
-  <label>Webhook signing secret (save it!)</label>${copyField("secret", webhookSecret)}
+  <label>Your private dashboard link</label>${copyField("dash", dashboardUrl)}
+  <label>Webhook signing secret</label>${copyField("secret", webhookSecret)}
   <div class="hint">Verify <code>X-Xanax-Signature: sha256=HMAC_SHA256(secret, X-Xanax-Timestamp + "." + raw_body)</code>.</div>
-  <p style="margin-top:20px"><a class="btn" href="${dashboardUrl}">Open dashboard</a> <a class="btn ghost" href="/api/products/${product.id}">See the agent view</a></p>
+  <p style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap"><a class="btn" href="${dashboardUrl}">Open dashboard</a><a class="btn ghost" href="/api/products/${product.id}">See the agent view</a></p>
 </div>`,
     { noindex: true },
   );
@@ -241,27 +251,37 @@ function webhookPill(o: Order) {
   return html`<span class="pill ${cls}" title="${o.webhook_last_error ?? ""}">${label}</span>`;
 }
 
-export function dashboardPage(args: { merchant: Merchant; products: Product[]; orders: Order[]; token: string; flash?: string }): string {
-  const { merchant, products, orders, token, flash } = args;
+export function dashboardPage(args: {
+  merchant: Merchant;
+  products: Product[];
+  orders: Order[];
+  /** Where this dashboard lives: `/m/<token>` (link login) or `/account/stores/<id>` (signed in). */
+  base: string;
+  flash?: string;
+  /** Show "Save to my account" (signed in, store not yet owned). */
+  claimable?: boolean;
+}): string {
+  const { merchant, products, orders, base, flash, claimable } = args;
   const byId = new Map(products.map((p) => [p.id, p]));
   const revenue = orders.reduce((s, o) => s + o.amount_cents, 0);
   return layout(
     `${merchant.business_name} · Dashboard · ${APP_NAME}`,
     html`
-<h1 style="font-size:clamp(28px,5vw,40px)">${merchant.business_name}</h1>
+<div class="page-head"><h1>${merchant.business_name}</h1></div>
 <p class="muted small">Payouts to <a class="mono" href="${config.network.explorer}/address/${merchant.payout_address}" target="_blank" rel="noopener">${merchant.payout_address}</a> · Webhook: ${merchant.webhook_url ?? "none"} · Email: ${merchant.email ?? "none"}</p>
 ${flash ? html`<div class="alert ok">${flash}</div>` : ""}
+${claimable ? html`<form method="post" action="${base}/claim" class="alert warn" style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>This store isn't in an account yet. Save it to yours to find it under Account.</span><button class="btn sm" type="submit">Save to my account</button></form>` : ""}
 <div class="grid">
-  <div class="card"><div class="muted small">Orders</div><div class="big">${orders.length}</div></div>
-  <div class="card"><div class="muted small">Revenue (USDC)</div><div class="big">$${formatUsd(revenue)}</div></div>
-  <div class="card"><div class="muted small">To fulfil</div><div class="big">${orders.filter((o) => o.status === "paid").length}</div></div>
+  <div class="card soft"><div class="muted small">Orders</div><div class="big">${orders.length}</div></div>
+  <div class="card soft"><div class="muted small">Revenue (USDC)</div><div class="big">$${formatUsd(revenue)}</div></div>
+  <div class="card soft"><div class="muted small">To fulfil</div><div class="big">${orders.filter((o) => o.status === "paid" && !o.downloaded_at).length}</div></div>
 </div>
 
 <h2>Products</h2>
 <div class="tablewrap card" style="padding:8px 14px"><table>
 <tr><th>Product</th><th>Price</th><th>Stock</th><th>Agent URL</th></tr>
 ${products.map(
-  (p) => html`<tr><td><b>${p.name}</b><div class="muted tiny">${p.kind === "digital" ? "Instant digital delivery" : "You fulfil"} · requires: ${p.required_fields.join(", ") || "nothing"}</div></td>
+  (p) => html`<tr><td><b>${p.name}</b><div class="muted tiny">${p.kind === "digital" ? (p.delivery_file_id ? "Instant download (uploaded file)" : "Instant digital delivery") : "You fulfil"} · requires: ${p.required_fields.join(", ") || "nothing"}</div></td>
 <td>$${formatUsd(p.price_cents)}</td><td>${p.active ? p.stock ?? "∞" : html`<span class="pill bad">Removed</span>`}</td><td class="mono tiny" style="word-break:break-all">${buyUrl(p.id)}</td></tr>`,
 )}
 </table></div>
@@ -276,54 +296,71 @@ ${orders.map((o) => {
   const p = byId.get(o.product_id);
   return html`<tr>
 <td class="tiny">${o.created_at.replace("T", " ").slice(0, 16)} UTC</td>
-<td class="mono tiny"><a href="/r/${o.id}">${o.id}</a></td>
+<td class="mono tiny"><a href="/r/${o.id}">${o.id}</a><div style="margin-top:6px"><a class="btn sm ghost" href="${base}/orders/${o.id}/receipt.pdf">Receipt PDF</a></div></td>
 <td>${o.quantity} × ${p?.name ?? o.product_id}</td>
 <td>$${formatUsd(o.amount_cents)}</td>
 <td class="small">${Object.keys(o.buyer).length ? Object.entries(o.buyer).map(([k, v]) => html`<div><span class="muted">${FIELD_LABELS[k] ?? k}:</span> ${v}</div>`) : html`<span class="muted">—</span>`}</td>
 <td class="mono tiny"><a href="${explorerTxUrl(o.tx_hash, o.network)}" target="_blank" rel="noopener">${shortHash(o.tx_hash)}</a></td>
-<td>${webhookPill(o)}${merchant.webhook_url ? html`<form method="post" action="/m/${token}/orders/${o.id}/resend" style="margin-top:6px"><button class="btn sm ghost" type="submit">Resend</button></form>` : ""}</td>
-<td>${statusPill(o)}${o.status === "paid" ? html`<form method="post" action="/m/${token}/orders/${o.id}/fulfil" style="margin-top:6px"><button class="btn sm" type="submit">Mark fulfilled</button></form>` : ""}</td>
+<td>${webhookPill(o)}${merchant.webhook_url ? html`<form method="post" action="${base}/orders/${o.id}/resend" style="margin-top:6px"><button class="btn sm ghost" type="submit">Resend</button></form>` : ""}</td>
+<td>${statusPill(o)}${o.status === "paid" && !o.downloaded_at ? html`<form method="post" action="${base}/orders/${o.id}/fulfil" style="margin-top:6px"><button class="btn sm" type="submit">Mark fulfilled</button></form>` : ""}</td>
 </tr>`;
 })}
 </table></div>`
 }
-<p class="tiny muted" style="margin-top:20px">This page's URL is your login. Don't share it.</p>`,
+<p class="tiny muted" style="margin-top:20px">${base.startsWith("/m/") ? "This page's URL is your login. Don't share it." : "Signed in with your account."}</p>`,
     { noindex: true },
   );
 }
 
 export function receiptPage(order: Order, product: Product, merchant: Merchant): string {
+  const status = order.status === "fulfilled" ? "Fulfilled" : product.kind === "digital" ? "Delivered" : "Paid · awaiting fulfilment";
   return layout(
     `Receipt ${order.id} · ${APP_NAME}`,
     html`
-<div class="card" style="max-width:620px;margin:20px auto">
-  <span class="pill ok">Paid</span>
-  <h1 style="font-size:32px;margin:14px 0 4px">$${formatUsd(order.amount_cents)} <span class="muted" style="font-size:18px">USDC</span></h1>
-  <p class="muted" style="margin-top:0">${order.quantity} × ${product.name} from <b>${merchant.business_name}</b></p>
+<div class="receipt">
+  <div class="receipt-top">
+    <div><div class="eyebrow" style="margin:0"><i></i>Payment received</div></div>
+    <div class="muted tiny mono">${order.id}</div>
+  </div>
+  <div class="receipt-amount">$${formatUsd(order.amount_cents)} <span>USDC</span></div>
+  <p class="muted" style="margin:6px 0 22px">${order.quantity} × ${product.name} · from <b style="color:var(--ink)">${merchant.business_name}</b></p>
   <dl class="kv">
-    <dt>Order</dt><dd class="mono">${order.id}</dd>
     <dt>Date</dt><dd>${order.created_at.replace("T", " ").slice(0, 19)} UTC</dd>
-    <dt>Network</dt><dd>${order.network === "base" ? "Base" : "Base Sepolia"}</dd>
-    <dt>Transaction</dt><dd class="mono"><a href="${explorerTxUrl(order.tx_hash, order.network)}" target="_blank" rel="noopener">${order.tx_hash}</a></dd>
+    <dt>Status</dt><dd>${status}</dd>
+    <dt>Unit price</dt><dd>$${formatUsd(order.unit_price_cents)} USDC × ${order.quantity}</dd>
+    <dt>Network</dt><dd>${order.network === "base" ? "Base" : "Base Sepolia (testnet)"}</dd>
+    <dt>Paid from</dt><dd class="mono">${order.payer_address ?? "—"}</dd>
     <dt>Paid to</dt><dd class="mono">${merchant.payout_address}</dd>
-    <dt>Status</dt><dd>${order.status === "fulfilled" ? "Fulfilled" : product.kind === "digital" ? "Delivered" : "Paid, awaiting fulfilment"}</dd>
+    <dt>Transaction</dt><dd class="mono"><a href="${explorerTxUrl(order.tx_hash, order.network)}" target="_blank" rel="noopener">${order.tx_hash}</a></dd>
   </dl>
-  <p class="tiny muted" style="margin-top:18px">Paid by an AI agent via x402. Funds went directly to the merchant's wallet. Buyer details are private to the merchant.</p>
+  <div class="receipt-actions">
+    <a class="btn" href="/r/${order.id}.pdf">Download PDF receipt</a>
+    <a class="btn ghost" href="${explorerTxUrl(order.tx_hash, order.network)}" target="_blank" rel="noopener">View on Basescan</a>
+  </div>
+  <p class="tiny muted" style="margin:22px 0 0">Paid by an AI agent over x402. USDC went straight to the merchant's wallet; ${APP_NAME} never held it. Buyer details are private to the merchant.</p>
 </div>`,
     { noindex: true },
   );
 }
 
-export function downloadPage(order: Order, product: Product, merchant: Merchant, txtUrl: string): string {
+export function downloadPage(order: Order, product: Product, merchant: Merchant, links: { txt?: string; file?: { url: string; name: string; size: number } }): string {
   return layout(
     `${product.name} · ${APP_NAME}`,
     html`
-<div class="card" style="max-width:760px;margin:20px auto">
+<div class="receipt" style="max-width:760px">
   <span class="pill ok">Delivered</span>
-  <h1 style="font-size:30px;margin:12px 0 4px">${product.name}</h1>
+  <h1 style="font-size:clamp(26px,4vw,36px);margin:14px 0 4px">${product.name}</h1>
   <p class="muted" style="margin-top:0">from ${merchant.business_name} · order <a class="mono" href="/r/${order.id}">${order.id}</a></p>
-  <pre style="font-size:15px;line-height:1.6">${product.delivery_text ?? ""}</pre>
-  <p><a class="btn sm ghost" href="${txtUrl}">Download as .txt</a></p>
+  ${
+    links.file
+      ? html`<div class="card soft" style="display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:18px 0"><div><b>${links.file.name}</b><div class="muted tiny">${(links.file.size / 1024 / 1024).toFixed(2)} MB</div></div><a class="btn blue" href="${links.file.url}">Download file</a></div>`
+      : ""
+  }
+  ${product.delivery_text ? html`<pre style="font-size:15px;line-height:1.6">${product.delivery_text}</pre>` : ""}
+  <div class="receipt-actions">
+    ${links.txt ? html`<a class="btn ghost" href="${links.txt}">Save text as .txt</a>` : ""}
+    <a class="btn ghost" href="/r/${order.id}.pdf">Download receipt (PDF)</a>
+  </div>
 </div>`,
     { noindex: true },
   );

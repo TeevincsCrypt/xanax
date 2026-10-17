@@ -9,30 +9,44 @@
     "typecheck": "tsc -p .",
     "test": "vitest run",
     "seed": "tsx --env-file-if-exists=.env scripts/seed.ts",
-    "test-buy": "tsx --env-file-if-exists=.env scripts/test-buy.ts"
+    "test-buy": "tsx --env-file-if-exists=.env scripts/test-buy.ts",
+    "build:client": "esbuild client/auth.tsx --bundle --jsx=automatic --minify --splitting --format=esm --target=es2020 --define:process.env.NODE_ENV=\\\"production\\\" --outdir=public/js --entry-names=[name] --chunk-names=c/[hash] --log-level=warning"
   },
   "license": "MIT",
   "packageManager": "pnpm@10.28.0",
   "dependencies": {
     "@coinbase/x402": "^2.1.0",
     "@hono/node-server": "^2.1.5",
+    "@privy-io/react-auth": "3.50.0",
     "@x402/core": "2.28.0",
     "@x402/evm": "2.28.0",
     "@x402/extensions": "2.28.0",
     "@x402/fetch": "2.28.0",
     "@x402/hono": "2.28.0",
+    "esbuild": "^0.28.2",
     "hono": "^4.13.13",
+    "jose": "6.2.12",
+    "pdf-lib": "1.17.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
     "tsx": "^4.23.15",
     "viem": "^2.57.7",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
     "typescript": "^5.9.3",
     "vitest": "^5.0.5"
   },
   "type": "module",
   "engines": {
     "node": ">=22.13"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

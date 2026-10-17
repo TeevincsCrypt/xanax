@@ -70,8 +70,12 @@ paid fetch (body + PAYMENT-SIGNATURE)
 | `GET /api/products?q=` | agent | Free search: price, required buyer fields, JSON schema of the body |
 | `GET /api/products/:id` | agent | Free product detail |
 | `POST /buy/:id?qty=N` | agent | **x402-paid** purchase (`GET` also returns the 402 for default probes) |
-| `GET /r/:orderId` | anyone | Public receipt (no buyer PII) |
-| `GET /d/:orderId?t=` | buyer | Signed, expiring digital download |
+| `GET /r/:orderId` / `.pdf` | anyone | Public receipt page and downloadable PDF (buyer copy, no buyer PII) |
+| `GET /login`, `/logout`, `/account` | user | Privy sign-in; account with stores, sales, purchases, activity |
+| `GET /account/stores/:id` | owner | Store dashboard for signed-in owners (same as the private link) |
+| `GET …/orders/:id/receipt.pdf` | merchant | Seller copy of the receipt PDF, incl. buyer details |
+| `GET /u/:id` | anyone | Uploaded product images |
+| `GET /d/:orderId?t=` (+ `/file`) | buyer | Signed, expiring digital delivery (text, link or uploaded file) |
 | `GET /llms.txt` | agent | How to use Xanax |
 | `GET /.well-known/x402` | crawler | Discovery doc listing paid resources |
 | `POST /admin/seed` | admin | Seeds the demo merchant (`Authorization: Bearer $ADMIN_TOKEN`) |
@@ -129,6 +133,7 @@ Switch to mainnet by setting `X402_NETWORK=base` plus `CDP_API_KEY_ID` and `CDP_
 | `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` | CDP API key, required for mainnet |
 | `DATABASE_URL` | `file:/data/xanax.db` |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Optional order emails |
+| `PRIVY_APP_ID`, `PRIVY_APP_SECRET` | Privy app for sign-in (accounts). App ID is public; secret is used server-side to read the user's email/wallet |
 | `ADMIN_TOKEN` | Bearer token for `/admin/seed` |
 | `SIGNING_SECRET` | HMAC key for download links (falls back to `ADMIN_TOKEN`) |
 | `MAX_PRICE_USD`, `MAX_QTY` | Limits (500, 10) |

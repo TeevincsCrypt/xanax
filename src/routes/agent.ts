@@ -5,7 +5,7 @@ import { merchants, orders, products } from "../db.js";
 import { safeEqual, verifyDownload } from "../security.js";
 import { clientIp, limitApi, limitFind } from "../limits.js";
 import { seedDemo, unseedDemo } from "../seed.js";
-import { downloadPage, findOrderPage, foundOrderPage, messagePage, receiptPage } from "../views/pages.js";
+import { downloadPage, findOrderPage, foundOrderPage, messagePage, productPage, receiptPage } from "../views/pages.js";
 import { downloadLink } from "../receipt.js";
 import { receiptPdf } from "../pdf.js";
 import { readUpload } from "../uploads.js";
@@ -50,6 +50,13 @@ agent.get("/r/:orderId", async (c) => {
   c.header("Content-Disposition", `attachment; filename="receipt-${order.id}.pdf"`);
   c.header("Cache-Control", "private, max-age=60");
   return c.body(new Uint8Array(pdf));
+});
+
+// Human product page (shareable).
+agent.get("/p/:id", (c) => {
+  const p = products.get(c.req.param("id"));
+  if (!p) return c.html(messagePage("Not found", "This product isn't available."), 404);
+  return c.html(productPage(p, merchants.get(p.merchant_id)!));
 });
 
 // "Find my order": no account needed. Order ID (a secret only buyer and seller see) plus a second
@@ -147,6 +154,7 @@ agent.get("/llms.txt", (c) => {
    - If a required buyer field is missing, the paid request fails with 400 BEFORE settlement: you are not charged.
    - Sold-out products return 409 instead of 402.
 3. With PayBox: call use_service with { credential_id, url: "<buy url>", method: "POST", body: {"buyer": {...}} }. PayBox probes, asks the user to approve if needed, pays and returns our receipt in output.value.response.body.
+   If use_service comes back pending (approval or signature), the payment finishes in PayBox's window: after the user approves, call get_request with that request_id until status is success, then read output.value.response.body.
 
 ## Receipt (200 response)
 

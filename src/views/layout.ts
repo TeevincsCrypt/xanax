@@ -38,7 +38,8 @@ h3{margin:0 0 6px;font-size:18px;letter-spacing:-.02em}
 code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13.5px}
 code{background:var(--soft);padding:2px 7px;border-radius:7px}
 pre{background:var(--soft);padding:16px;border-radius:14px;overflow:auto;white-space:pre-wrap;word-break:break-word}
-.copy{display:flex;gap:8px;align-items:stretch}.copy input,.copy textarea{flex:1;min-width:0}
+.copy{display:flex;gap:8px;align-items:stretch}.copy input,.copy textarea{flex:1;min-width:0}.copy textarea{min-height:110px;resize:vertical}
+@media (max-width:560px){.copy:has(textarea){flex-direction:column}}
 label{display:block;font-weight:600;font-size:14px;margin:18px 0 7px}
 input,textarea,select{width:100%;font:inherit;color:var(--ink);background:var(--soft);border:1px solid transparent;border-radius:12px;padding:12px 14px}
 input:focus,textarea:focus{outline:none;border-color:var(--blue);background:#fff;box-shadow:0 0 0 4px rgba(47,75,255,.12)}
@@ -138,7 +139,7 @@ ${body}
 export function copyField(id: string, value: string, multiline = false): SafeHtml {
   return html`<div class="copy">${
     multiline
-      ? html`<textarea id="${id}" rows="3" readonly>${value}</textarea>`
+      ? html`<textarea id="${id}" rows="5" readonly>${value}</textarea>`
       : html`<input id="${id}" value="${value}" readonly>`
   }<button type="button" class="btn sm ghost" data-copy="${id}">Copy</button></div>`;
 }

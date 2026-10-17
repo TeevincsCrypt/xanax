@@ -27,10 +27,10 @@ function shortHash(h: string) {
 export function buyerPrompt(p: Product, merchantName: string): string {
   const needs = p.required_fields.map((f) => FIELD_LABELS[f]!.toLowerCase());
   const tail = needs.length ? ` with my ${needs.join(", ").replace(/, ([^,]*)$/, " and $1")}` : "";
-  const after =
-    p.kind === "digital"
-      ? "When it's done, show me the full message from the response, including the download link and the receipt link."
-      : "When it's done, show me the full message from the response, including the order ID and the receipt link.";
+  const links = p.kind === "digital" ? "the download link and the receipt link" : "the order ID and the receipt link";
+  // With PayBox the payment completes in its signing window after use_service returns, so the agent
+  // must fetch the finished result with get_request to see our receipt.
+  const after = `If it needs my approval, wait for me to approve, then call PayBox get_request with that request's id until it succeeds, and show me the full "message" from the response body, including ${links}.`;
   return `Use PayBox to buy 1 × ${p.name} from ${merchantName}: use_service with method POST on ${buyUrl(p.id)}${tail}. ${after}`;
 }
 
@@ -233,7 +233,9 @@ ${
     : html`<div class="alert warn"><b>Save this page now.</b> Your dashboard link and webhook secret are shown only once. <a href="/login?next=${encodeURIComponent(new URL(dashboardUrl).pathname)}">Sign in</a> to keep this store in an account instead.</div>`
 }
 <div class="card">
-  <label>Agent product URL</label>${copyField("buyurl", buyUrl(product.id))}
+  <label>Share this link with buyers</label>${copyField("shareurl", productPageUrl(product.id))}
+  <div class="hint">Opens a product page with the price, a copy-paste prompt for the buyer's AI, and "Find my order". Agents can use the same link to pay.</div>
+  <label>Agent product URL (x402 payment endpoint)</label>${copyField("buyurl", buyUrl(product.id))}
   <div class="hint">x402-protected. $${formatUsd(product.price_cents)} per unit, paid in USDC to <span class="mono">${merchant.payout_address}</span>.</div>
   <label>Ready-to-paste prompt for a buyer (Claude, ChatGPT or Grok with PayBox)</label>${copyField("prompt", buyerPrompt(product, merchant.business_name), true)}
   <label>Your private dashboard link</label>${copyField("dash", dashboardUrl)}
@@ -412,5 +414,48 @@ export function foundOrderPage(order: Order, product: Product, merchant: Merchan
   ${download ? html`<p class="tiny muted" style="margin-top:16px">The download link is valid for 7 days. You can come back here any time for a fresh one.</p>` : html`<p class="small muted" style="margin-top:16px">${merchant.business_name} fulfils this order directly${order.buyer.email ? " and will contact you at the email you provided" : ""}.</p>`}
 </div>`,
     { noindex: true },
+  );
+}
+
+export function productPageUrl(id: string): string {
+  return `${config.BASE_URL}/p/${id}`;
+}
+
+/** Human-facing product page: what browsers see at /p/:id and at the agent URL /buy/:id. */
+export function productPage(p: Product, merchant: Merchant): string {
+  const soldOut = p.stock !== null && p.stock <= 0;
+  return layout(
+    `${p.name} · ${merchant.business_name} · ${APP_NAME}`,
+    html`
+<div class="hero" style="align-items:start;margin-top:8px">
+  <div>${
+    p.image_url
+      ? html`<img src="${p.image_url}" alt="" style="width:100%;border-radius:24px;aspect-ratio:4/3;object-fit:cover;background:var(--soft)" referrerpolicy="no-referrer">`
+      : html`<div class="tile" style="--h:${hue(p.name)};aspect-ratio:4/3;border-radius:24px;font-size:120px">${p.name.slice(0, 1).toUpperCase()}</div>`
+  }</div>
+  <div>
+    <div class="muted small">${merchant.business_name}</div>
+    <h1 style="font-size:clamp(32px,4.6vw,52px);margin:6px 0 12px">${p.name}</h1>
+    <div class="price" style="font-size:36px">$${formatUsd(p.price_cents)} <span class="muted" style="font-size:16px;font-weight:600">USDC on ${config.network.testnet ? "Base Sepolia" : "Base"}</span></div>
+    <p style="margin:6px 0 18px">${soldOut ? html`<span class="pill bad">Sold out</span>` : p.kind === "digital" ? html`<span class="pill ok">Instant download after payment</span>` : html`<span class="pill blue">${merchant.business_name} ships it</span>`}</p>
+    <p class="muted">${p.description}</p>
+    ${
+      soldOut
+        ? ""
+        : html`<div class="card soft" style="margin-top:22px">
+      <h3>Buy it with your AI</h3>
+      <ol class="muted small" style="margin:6px 0 14px;padding-left:18px">
+        <li>Open Claude, ChatGPT or Grok with the <b>PayBox</b> connector.</li>
+        <li>Paste this prompt and approve the payment with your passkey.</li>
+        <li>Your agent shows your receipt${p.kind === "digital" ? " and download link" : ""}.</li>
+      </ol>
+      ${copyField("prompt", buyerPrompt(p, merchant.business_name), true)}
+      ${p.required_fields.length ? html`<p class="hint">The seller needs your ${p.required_fields.map((f) => FIELD_LABELS[f]!.toLowerCase()).join(", ")}; your agent will ask or fill them in.</p>` : ""}
+    </div>`
+    }
+    <p class="small muted" style="margin-top:16px">Already paid but lost your ${p.kind === "digital" ? "download" : "receipt"}? <a href="/find">Find my order</a>. Paid in USDC straight to the seller's wallet over x402.</p>
+  </div>
+</div>`,
+    { description: `${p.name} from ${merchant.business_name}: $${formatUsd(p.price_cents)} USDC. Buy it with your AI agent.` },
   );
 }

@@ -9,6 +9,7 @@ import { receiptJson, wasNotified } from "../receipt.js";
 import { randomId } from "../security.js";
 import { ensureInitialized, httpServer, paymentNonce, readPaymentHeader, XanaxAdapter } from "../x402.js";
 import { clientIp, limitBuy } from "../limits.js";
+import { productPage } from "../views/pages.js";
 
 export const buy = new Hono();
 
@@ -33,6 +34,14 @@ async function handleBuy(c: Context) {
   const product = products.get(c.req.param("id") ?? "");
   if (!product) return c.json({ error: "Product not found. Search products at /api/products?q=..." }, 404);
   const merchant = merchants.get(product.merchant_id)!;
+
+  // A person opening the agent URL in a browser gets the product page, not a bare 402 paywall.
+  const accept = c.req.header("accept") ?? "";
+  const ua = c.req.header("user-agent") ?? "";
+  const hasPayment = Boolean(c.req.header("payment-signature") || c.req.header("x-payment"));
+  if (c.req.method === "GET" && !hasPayment && accept.includes("text/html") && ua.includes("Mozilla")) {
+    return c.html(productPage(product, merchant));
+  }
 
   const qtyParsed = parseQty(c.req.query("qty"));
   if (!qtyParsed.ok) return c.json({ error: qtyParsed.error }, 400);

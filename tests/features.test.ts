@@ -230,3 +230,22 @@ describe("find my order (no account)", () => {
     expect(await res.text()).toContain("including the download link and the receipt link");
   });
 });
+
+describe("human product page", () => {
+  it("shows browsers a product page at the agent URL and /p/:id, while agents still get the 402", async () => {
+    await req("/sell", { method: "POST", body: sellForm({ delivery_text: "the goods" }) });
+    const product = products.search("Photo pack")[0]!;
+    const browser = { accept: "text/html,application/xhtml+xml", "user-agent": "Mozilla/5.0 (iPhone)" };
+
+    const page = await req(`/buy/${product.id}`, { headers: browser });
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).toContain("Buy it with your AI");
+    expect(html).toContain("get_request");
+    expect(html).not.toContain("@x402/paywall");
+
+    expect((await req(`/p/${product.id}`, { headers: browser })).status).toBe(200);
+    expect((await req(`/buy/${product.id}`)).status).toBe(402);
+    expect((await req(`/buy/${product.id}`, { method: "POST", headers: browser })).status).toBe(402);
+  });
+});

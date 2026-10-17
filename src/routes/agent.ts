@@ -52,6 +52,7 @@ agent.get("/d/:orderId", (c) => {
   if (product.kind !== "digital") return c.html(messagePage("Not found", "Nothing to download for this order."), 404);
   c.header("Cache-Control", "private, no-store");
   c.header("Referrer-Policy", "no-referrer");
+  orders.markDownloaded(id);
   if (product.delivery_url && !product.delivery_text) return c.redirect(product.delivery_url, 302);
   if (c.req.query("format") === "txt") {
     c.header("Content-Disposition", `attachment; filename="${product.id}.txt"`);

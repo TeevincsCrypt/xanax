@@ -32,7 +32,14 @@ export function receiptJson(order: Order, product: Product, merchant: Merchant, 
     nextSteps += ` (${name} could not be notified instantly; the order is saved in their dashboard and notification will be retried.)`;
   }
 
+  const amount = formatUsd(order.amount_cents);
+  const message = delivery
+    ? `Payment received: $${amount} USDC to ${name}. Order ${order.id}: ${order.quantity} x ${product.name}. Download it here: ${delivery.download_url}`
+    : `Payment received: $${amount} USDC to ${name}. Order ${order.id}: ${order.quantity} x ${product.name}. ${nextSteps} Receipt: ${config.BASE_URL}/r/${order.id}`;
+
   return {
+    // One sentence an agent can relay verbatim; the structured fields follow.
+    message,
     status: "paid" as const,
     order_id: order.id,
     merchant: name,

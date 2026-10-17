@@ -231,6 +231,7 @@ export function sellSuccessPage(args: { product: Product; merchant: Merchant; da
 }
 
 function statusPill(o: Order) {
+  if (o.downloaded_at) return html`<span class="pill ok" title="First opened ${o.downloaded_at.replace("T", " ").slice(0, 16)} UTC">Downloaded</span>`;
   return o.status === "fulfilled" ? html`<span class="pill ok">Fulfilled</span>` : html`<span class="pill warn">Paid · to fulfil</span>`;
 }
 

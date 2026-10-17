@@ -243,10 +243,13 @@ describe("x402 buy flow", () => {
     expect(res.status).toBe(200);
     const receipt = await res.json();
     expect(receipt.delivery.type).toBe("download");
+    expect(receipt.message).toContain(receipt.delivery.download_url);
+    expect(orders.get(receipt.order_id)!.downloaded_at).toBeNull();
     const url = new URL(receipt.delivery.download_url);
     const page = await appFetch(`https://xanax.test${url.pathname}${url.search}`);
     expect(page.status).toBe(200);
     expect(await page.text()).toContain("Suya");
+    expect(orders.get(receipt.order_id)!.downloaded_at).toBeTruthy();
     const bad = await appFetch(`https://xanax.test${url.pathname}?t=1.bad`);
     expect(bad.status).toBe(403);
   });

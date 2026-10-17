@@ -54,6 +54,7 @@ export interface Order {
   email_status: "none" | "sent" | "failed";
   created_at: string;
   fulfilled_at: string | null;
+  downloaded_at?: string | null;
 }
 
 const SCHEMA = `
@@ -117,6 +118,9 @@ export function openDb(url = config.DATABASE_URL): DatabaseSync {
   const db = new DatabaseSync(resolvePath(url));
   db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
   db.exec(SCHEMA);
+  // Additive migrations for databases created by earlier versions.
+  const cols = (db.prepare("PRAGMA table_info(orders)").all() as Array<{ name: string }>).map((c) => c.name);
+  if (!cols.includes("downloaded_at")) db.exec("ALTER TABLE orders ADD COLUMN downloaded_at TEXT");
   return db;
 }
 
@@ -289,6 +293,12 @@ export const orders = {
   stats(): { orders: number; volumeCents: number } {
     const r = db().prepare("SELECT COUNT(*) AS n, COALESCE(SUM(amount_cents), 0) AS v FROM orders").get() as { n: number; v: number };
     return { orders: Number(r.n), volumeCents: Number(r.v) };
+  },
+  /** Record the first time the buyer opened their digital download. */
+  markDownloaded(id: string): void {
+    db()
+      .prepare("UPDATE orders SET downloaded_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND downloaded_at IS NULL")
+      .run(id);
   },
   markFulfilled(id: string, merchantId: string): boolean {
     const res = db()
